@@ -9,7 +9,20 @@ namespace VisionQC.App.ViewModels;
 public partial class HistoryViewModel : ObservableObject
 {
     private readonly IResultRepository _repo;
-    public HistoryViewModel(IResultRepository repo) => _repo = repo;
+    public HistoryViewModel(IResultRepository repo)
+    {
+        _repo = repo;
+        // 히트맵 표시를 켜고 끄면 선택한 이미지를 다시 그린다(약한 참조 — 로그아웃 후 이전 화면이 남지 않게)
+        // 주의: 약한 이벤트 관리자에는 람다가 아니라 인스턴스 메서드를 넘겨야 한다(람다는 곧 수거돼 핸들러가 조용히 사라진다)
+        System.ComponentModel.PropertyChangedEventManager.AddHandler(ViewOptions.Instance, OnViewOptionsChanged, nameof(ViewOptions.ShowHeatmap));
+    }
+
+    private void OnViewOptionsChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e) => RedrawImage();
+
+    private void RedrawImage()
+    {
+        if (Selected is { } s) SelectedImage = HeatmapRenderer.Compose(s.ImagePath, s.Verdict == Verdict.NG ? s.Heatmap : null, ViewOptions.Instance.ShowHeatmap);
+    }
 
     public string[] VerdictOptions { get; } = { "전체", "OK", "NG", "ERROR" };
 
@@ -26,7 +39,7 @@ public partial class HistoryViewModel : ObservableObject
     partial void OnSelectedChanged(InspectionResult? value)
     {
         if (value is null) { SelectedImage = null; SelectedDetail = ""; return; }
-        SelectedImage = ImageLoader.Load(value.ImagePath);
+        SelectedImage = HeatmapRenderer.Compose(value.ImagePath, value.Verdict == Verdict.NG ? value.Heatmap : null, ViewOptions.Instance.ShowHeatmap);
         var local = value.InspectedAtUtc.ToLocalTime();
         SelectedDetail = $"{value.ImagePath}\n{local:yyyy-MM-dd HH:mm:ss} · {value.Verdict} · 점수 {value.Score:F3} · {value.ElapsedMs} ms"
             + (SelectedImage is null ? "\n※ 이미지 파일을 열 수 없음(이동·삭제됨?)" : "")

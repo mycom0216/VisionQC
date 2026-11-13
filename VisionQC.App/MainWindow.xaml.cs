@@ -15,7 +15,9 @@ public partial class MainWindow : Window
     private readonly SettingsViewModel _settings;
     private readonly AdminViewModel _admin;
     private readonly InspectionViewModel _inspection;
+    private readonly DataViewModel _data;
     private readonly System.Windows.Threading.DispatcherTimer _idleTimer;
+    private readonly System.Windows.Threading.DispatcherTimer _backupTimer;
     private IdleMonitor _idle;
     private bool _autoRunDone;
 
@@ -32,8 +34,14 @@ public partial class MainWindow : Window
         _idleTimer.Start();
         System.Windows.Input.InputManager.Current.PreProcessInput += OnAnyInput;
         svc.SettingsChanged += OnSettingsChanged;
+        // 자동 백업: 로그인 직후 한 번, 이후 30분마다 "주기가 지났는지" 확인(주기는 설정 탭, 기본 24시간). 앱이 켜져 있을 때만 동작한다.
+        _backupTimer = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromMinutes(30) };
+        _backupTimer.Tick += async (_, _) => await RunAutoBackupAsync();
+        _backupTimer.Start();
+        Loaded += async (_, _) => await RunAutoBackupAsync();
         Closed += (_, _) =>
         {
+            _backupTimer.Stop();
             _idleTimer.Stop();
             System.Windows.Input.InputManager.Current.PreProcessInput -= OnAnyInput;
             _svc.SettingsChanged -= OnSettingsChanged;
@@ -57,7 +65,10 @@ public partial class MainWindow : Window
         SettingsTab.DataContext = _settings;
         _admin = new AdminViewModel(svc, session);
         AdminTab.DataContext = _admin;
+        _data = new DataViewModel(svc, session, () => inspection.IsRunning);
+        DataTab.DataContext = _data;
 
+        SetVisible(DataTab, session.Can(Permission.ManageUsers));
         SetVisible(ReviewTab, session.Can(Permission.ReviewResults));
         SetVisible(SettingsTab, session.Can(Permission.ChangeSettings));
         SetVisible(AdminTab, session.Can(Permission.ManageUsers));
@@ -74,7 +85,7 @@ public partial class MainWindow : Window
                 if (autorun) await inspection.StartCommand.ExecuteAsync(null);
                 TabItem? target = startTab switch
                 {
-                    "history" => HistoryTab, "review" => ReviewTab, "stats" => StatsTab, "settings" => SettingsTab, "admin" => AdminTab, _ => null
+                    "history" => HistoryTab, "review" => ReviewTab, "stats" => StatsTab, "settings" => SettingsTab, "admin" => AdminTab, "data" => DataTab, _ => null
                 };
                 if (target is { Visibility: Visibility.Visible }) Tabs.SelectedItem = target;
             };
@@ -107,6 +118,40 @@ public partial class MainWindow : Window
         else if (Tabs.SelectedItem == StatsTab) await _stats.RefreshAsync();
         else if (Tabs.SelectedItem == ReviewTab) await _review.RefreshAsync();
         else if (Tabs.SelectedItem == AdminTab) await _admin.RefreshAllAsync();
+        else if (Tabs.SelectedItem == DataTab) _data.Refresh();
+    }
+
+    private async Task RunAutoBackupAsync()
+    {
+        var r = await _svc.RunAutoBackupIfDueAsync(_session);
+        if (r is not null && Tabs.SelectedItem == DataTab) _data.Refresh();
+    }
+
+    // ── 데이터 탭: 위험한 동작은 확인 창을 거친 뒤에만 실행 ──
+    private async void Restore_Click(object sender, RoutedEventArgs e)
+    {
+        if (_data.PrepareRestore() is not { } backup) return;
+        var ok = MessageBox.Show(this,
+            $"'{backup.Name}'({backup.StampLocal:yyyy-MM-dd HH:mm})으로 복원합니다.\n\n" +
+            "• 현재 DB는 prerestore_visionqc_*.db로 먼저 보관됩니다.\n" +
+            "• 이 백업 이후의 검사 이력·정정·계정 변경은 되돌려집니다.\n" +
+            "• 복원 후 로그인 화면으로 돌아가며, 복원 시점의 계정으로 다시 로그인해야 합니다.\n\n계속할까요?",
+            "백업에서 복원", MessageBoxButton.YesNo, MessageBoxImage.Warning, MessageBoxResult.No);
+        if (ok != MessageBoxResult.Yes) return;
+        if (await _data.ExecuteRestoreAsync(backup)) { _svc.RestartRequested = true; Close(); }
+    }
+
+    private async void PurgePreview_Click(object sender, RoutedEventArgs e) => await _data.PreviewPurgeAsync();
+
+    private async void Purge_Click(object sender, RoutedEventArgs e)
+    {
+        if (await _data.PreviewPurgeAsync() is not { } target) return;       // 대상이 없거나 입력이 잘못되면 여기서 끝
+        var ok = MessageBox.Show(this,
+            $"{target.Days}일보다 오래된 검사 결과 {target.Count:N0}건을 삭제합니다(불량 목록·정정 포함).\n\n" +
+            "• 삭제 직전에 DB를 자동으로 백업합니다(백업이 실패하면 삭제하지 않습니다).\n" +
+            "• 삭제는 되돌릴 수 없습니다. 되돌리려면 그 백업으로 복원해야 합니다.\n• 감사 로그와 계정은 유지됩니다.\n\n정말 삭제할까요?",
+            "오래된 이력 삭제", MessageBoxButton.YesNo, MessageBoxImage.Warning, MessageBoxResult.No);
+        if (ok == MessageBoxResult.Yes) await _data.ExecutePurgeAsync(target.Days);
     }
 
     private async void Logout_Click(object sender, RoutedEventArgs e)

@@ -22,19 +22,21 @@ public partial class App : Application
     {
         base.OnStartup(e);
         ShutdownMode = ShutdownMode.OnExplicitShutdown;   // 로그인 창과 메인 창이 번갈아 뜨므로 직접 종료한다
-
-        AppServices svc;
-        try { svc = new AppServices(ParseArgs(e.Args)); }
-        catch (Exception ex)
-        {
-            MessageBox.Show($"이력 DB를 열 수 없습니다.\n\n{ex.Message}", "VisionQC", MessageBoxButton.OK, MessageBoxImage.Error);
-            Shutdown(1);
-            return;
-        }
+        var args = ParseArgs(e.Args);
 
         string? notice = null;
         while (true)
         {
+            // 로그인할 때마다 서비스를 새로 만든다 — DB를 복원한 뒤에는 연결·설정을 반드시 새로 읽어야 한다
+            AppServices svc;
+            try { svc = new AppServices(args); }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"이력 DB를 열 수 없습니다.\n\n{ex.Message}", "VisionQC", MessageBoxButton.OK, MessageBoxImage.Error);
+                Shutdown(1);
+                return;
+            }
+
             bool firstRun;
             try { firstRun = !svc.Auth.HasAnyUserAsync().GetAwaiter().GetResult(); }
             catch (Exception ex)
@@ -52,9 +54,8 @@ public partial class App : Application
             MainWindow = main;
             main.ShowDialog();
 
-            if (!svc.LogoutRequested) break;      // 창을 그냥 닫으면 종료, 로그아웃이면 로그인 창으로
+            if (!svc.LogoutRequested && !svc.RestartRequested) break;      // 창을 그냥 닫으면 종료, 로그아웃·복원이면 로그인 창으로
             notice = svc.LogoutNotice ?? "로그아웃했습니다. 다시 로그인하세요.";
-            svc.LogoutNotice = null;
         }
         Shutdown();
     }

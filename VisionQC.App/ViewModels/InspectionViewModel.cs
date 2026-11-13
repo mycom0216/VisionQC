@@ -24,12 +24,33 @@ public partial class InspectionViewModel : ObservableObject
         _folderPath = svc.Effective.FolderPath;
         svc.SettingsChanged += () => OnPropertyChanged(nameof(SettingsSummary));
         if (svc.SettingsWarning is { } w) _statusMessage = $"설정 알림: {w}";
+        System.ComponentModel.PropertyChangedEventManager.AddHandler(ViewOptions.Instance, OnViewOptionsChanged, nameof(ViewOptions.ShowHeatmap));
+    }
+
+    private InspectionResult? _current;
+
+    private void OnViewOptionsChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+    {
+        if (_current is { } c) CurrentImage = HeatmapRenderer.Compose(c.ImagePath, c.Verdict == Verdict.NG ? c.Heatmap : null, ViewOptions.Instance.ShowHeatmap);
     }
 
     [ObservableProperty] private string _folderPath;
 
-    /// <summary>true면 폴더에 새로 생기는 이미지를 계속 검사한다(중지 버튼으로 끝). 시작할 때 이미 있던 파일은 검사하지 않는다.</summary>
-    [ObservableProperty] private bool _watchMode;
+    public string[] ModeOptions { get; } = { "폴더 일괄 검사", "폴더 감시(새 이미지 자동 검사)", "카메라 / 영상 파일" };
+
+    /// <summary>0=폴더 일괄, 1=폴더 감시(시작 이후 생긴 이미지를 계속 검사, 중지로 끝), 2=카메라·영상 파일.</summary>
+    [NotifyPropertyChangedFor(nameof(IsFolderMode))]
+    [NotifyPropertyChangedFor(nameof(IsCameraMode))]
+    [NotifyPropertyChangedFor(nameof(WatchMode))]
+    [ObservableProperty] private int _modeIndex;
+
+    public bool IsCameraMode => ModeIndex == 2;
+    public bool IsFolderMode => ModeIndex != 2;
+    public bool WatchMode => ModeIndex == 1;
+
+    /// <summary>카메라 번호("0", "1" …) 또는 영상 파일 경로. 영상은 끝나면 자동 종료, 카메라는 중지할 때까지.</summary>
+    [ObservableProperty] private string _cameraSpec = "0";
+    [ObservableProperty] private string _captureIntervalText = "1";
 
     /// <summary>모델·임계값·ROI는 설정 탭(엔지니어 이상)에서 바꾼다. 여기서는 지금 값을 보여 주기만 한다.</summary>
     public string SettingsSummary
@@ -79,7 +100,16 @@ public partial class InspectionViewModel : ObservableObject
     private async Task StartAsync()
     {
         if (!_session.Can(Permission.RunInspection)) { StatusMessage = "검사 권한이 없습니다."; return; }
-        if (!Directory.Exists(FolderPath)) { StatusMessage = "이미지 폴더를 찾을 수 없습니다."; return; }
+        bool camera = IsCameraMode, watch = WatchMode;
+        TimeSpan interval = default;
+        if (camera)
+        {
+            if (string.IsNullOrWhiteSpace(CameraSpec)) { StatusMessage = "카메라 번호 또는 영상 파일을 입력하세요."; return; }
+            if (!double.TryParse(CaptureIntervalText, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var sec)
+                || sec < 0.05 || sec > 3600) { StatusMessage = "촬영 간격은 0.05~3600초의 숫자여야 합니다."; return; }
+            interval = TimeSpan.FromSeconds(sec);
+        }
+        else if (!Directory.Exists(FolderPath)) { StatusMessage = "이미지 폴더를 찾을 수 없습니다."; return; }
         var cfg = _svc.Effective;
         if (string.IsNullOrWhiteSpace(cfg.ModelPath)) { StatusMessage = "모델이 설정되어 있지 않습니다. 엔지니어에게 설정을 요청하세요."; return; }
 
@@ -87,31 +117,37 @@ public partial class InspectionViewModel : ObservableObject
         try { engine = new OnnxClassifier(cfg.ModelPath); }
         catch (Exception ex) { StatusMessage = $"모델을 열 수 없습니다: {ex.Message}"; return; }
 
-        _svc.RememberFolder(FolderPath);
+        if (!camera) _svc.RememberFolder(FolderPath);
+        var captureDir = Path.Combine(_svc.CaptureDir, DateTime.Now.ToString("yyyyMMdd"));
         Total = Ok = Ng = Error = 0;
         Recent.Clear();
         VerdictText = "-"; VerdictBrush = Brushes.Gray; DetailText = ""; CurrentImage = null;
         IsRunning = true;
-        bool watch = WatchMode;
-        StatusMessage = watch
-            ? $"감시 중… 폴더에 새로 생기는 이미지를 자동 검사합니다. 중지 버튼으로 끝냅니다. (모델 {engine.Model.Name} / {engine.Model.Version})"
-            : $"검사 중… (모델 {engine.Model.Name} / {engine.Model.Version})";
+        StatusMessage = camera
+            ? $"촬영 중… {CameraSpec.Trim()} 에서 {interval.TotalSeconds:G3}초 간격으로 프레임을 검사합니다(영상 파일은 끝나면 자동 종료, 카메라는 중지 버튼으로 끝냄). (모델 {engine.Model.Name} / {engine.Model.Version})"
+            : watch
+                ? $"감시 중… 폴더에 새로 생기는 이미지를 자동 검사합니다. 중지 버튼으로 끝냅니다. (모델 {engine.Model.Name} / {engine.Model.Version})"
+                : $"검사 중… (모델 {engine.Model.Name} / {engine.Model.Version})";
         _cts = new CancellationTokenSource();
 
         var settings = cfg.ToInspectionSettings();
         await _session.AuditAsync(AuditActions.InspectionStart,
-            $"{FolderPath} · 모델 {engine.Model.Version} · 임계값 {cfg.Threshold:F3}" + (cfg.Roi is null ? "" : " · ROI 사용") + (watch ? " · 폴더 감시" : ""));
+            (camera ? $"카메라/영상 {CameraSpec.Trim()} ({interval.TotalSeconds:G3}초 간격, 캡처 {captureDir})" : FolderPath)
+            + $" · 모델 {engine.Model.Version} · 임계값 {cfg.Threshold:F3}" + (cfg.Roi is null ? "" : " · ROI 사용") + (watch ? " · 폴더 감시" : ""));
 
         var pipeline = new InspectionPipeline(new OpenCvPreprocessor(), engine, new ThresholdJudge(), _svc.Results);
         var progress = new Progress<InspectionResult>(OnResult);   // UI 스레드에서 만들었으므로 콜백도 UI 스레드
 
         try
         {
-            IImageSource source = watch ? new FolderWatchImageSource(FolderPath) : new FolderImageSource(FolderPath);
+            IImageSource source = camera ? new VideoCaptureImageSource(CameraSpec, captureDir, interval)
+                                : watch ? new FolderWatchImageSource(FolderPath)
+                                : new FolderImageSource(FolderPath);
             var sum = await pipeline.RunAsync(source, settings, progress, _cts.Token);
             StatusMessage = sum.Status switch
             {
                 JobStatus.Completed => $"완료: 총 {sum.Total}장 (OK {sum.Ok} / NG {sum.Ng} / ERROR {sum.Error})",
+                JobStatus.Cancelled when camera => $"촬영 종료: {sum.Total}장 처리 (OK {sum.Ok} / NG {sum.Ng} / ERROR {sum.Error})",
                 JobStatus.Cancelled when watch => $"감시 종료: {sum.Total}장 처리 (OK {sum.Ok} / NG {sum.Ng} / ERROR {sum.Error})",
                 JobStatus.Cancelled => $"중지됨: {sum.Total}장 처리",
                 _ => $"실패: {sum.FatalError}"
@@ -144,7 +180,8 @@ public partial class InspectionViewModel : ObservableObject
         DetailText = r.Verdict == Verdict.ERROR
             ? $"{Path.GetFileName(r.ImagePath)}\n{r.ErrorMessage}"
             : $"{Path.GetFileName(r.ImagePath)}\n불량 점수 {r.Score:F3} · {r.ElapsedMs} ms";
-        CurrentImage = ImageLoader.Load(r.ImagePath);
+        _current = r;
+        CurrentImage = HeatmapRenderer.Compose(r.ImagePath, r.Verdict == Verdict.NG ? r.Heatmap : null, ViewOptions.Instance.ShowHeatmap);
 
         Recent.Insert(0, r);
         if (Recent.Count > 200) Recent.RemoveAt(Recent.Count - 1);

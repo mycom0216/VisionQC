@@ -34,8 +34,18 @@ public sealed class OnnxClassifier : IInferenceEngine, IDisposable
     {
         var tensor = new DenseTensor<float>(image.Data, new[] { 1, 3, image.Height, image.Width });
         using var results = _session.Run(new[] { NamedOnnxValue.CreateFromTensor(_inputName, tensor) });
-        var values = results.First().AsEnumerable<float>().ToArray();
-        return InferenceOutput.FromScore(ToDefectProbability(values));
+        var values = results.First().AsEnumerable<float>().ToArray();       // 첫 출력 = logits
+
+        // 선택 출력 "cam"(training/add_cam_output.py가 덧붙임)이 있으면 불량 위치 히트맵을 함께 돌려준다. 없으면 null.
+        Heatmap? heatmap = null;
+        var cam = results.FirstOrDefault(r => r.Name == "cam");
+        if (cam is not null)
+        {
+            var t = cam.AsTensor<float>();
+            if (t.Dimensions.Length == 4 && t.Dimensions[0] == 1 && t.Dimensions[1] == 1)
+                heatmap = new Heatmap(t.Dimensions[3], t.Dimensions[2], t.ToArray());
+        }
+        return InferenceOutput.FromScore(ToDefectProbability(values), heatmap);
     }
 
     internal static float ToDefectProbability(float[] values)

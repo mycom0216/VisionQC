@@ -6,5 +6,6 @@
         <local:InvertBoolConverter x:Key="InvertBool"/>
         <local:FileNameConverter x:Key="FileName"/>
         <local:LocalTimeConverter x:Key="LocalTime"/>
+        <BooleanToVisibilityConverter x:Key="BoolToVis"/>
     </Application.Resources>
 </Application>

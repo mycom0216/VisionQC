@@ -39,6 +39,14 @@ public partial class ReviewViewModel : ObservableObject
         _repo = repo;
         _session = session;
         _service = new ReviewService(repo);
+        System.ComponentModel.PropertyChangedEventManager.AddHandler(ViewOptions.Instance, OnViewOptionsChanged, nameof(ViewOptions.ShowHeatmap));
+    }
+
+    private void OnViewOptionsChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e) => RedrawImage();
+
+    private void RedrawImage()
+    {
+        if (Selected?.Item.Result is { } r) SelectedImage = HeatmapRenderer.Compose(r.ImagePath, r.Verdict == Verdict.NG ? r.Heatmap : null, ViewOptions.Instance.ShowHeatmap);
     }
 
     public string[] VerdictOptions { get; } = { "전체", "OK", "NG", "ERROR" };
@@ -76,7 +84,7 @@ public partial class ReviewViewModel : ObservableObject
         if (row is null) { SelectedImage = null; SelectedDetail = ""; HistoryText = ""; return; }
 
         var r = row.Item.Result;
-        SelectedImage = ImageLoader.Load(r.ImagePath);
+        SelectedImage = HeatmapRenderer.Compose(r.ImagePath, r.Verdict == Verdict.NG ? r.Heatmap : null, ViewOptions.Instance.ShowHeatmap);
         SelectedDetail = $"{r.ImagePath}\n{r.InspectedAtUtc.ToLocalTime():yyyy-MM-dd HH:mm:ss} · 원 판정 {r.Verdict} · 점수 {(r.Verdict == Verdict.ERROR ? "-" : r.Score.ToString("F3"))}"
             + (SelectedImage is null ? "\n※ 이미지 파일을 열 수 없음(이동·삭제됨?)" : "")
             + (r.ErrorMessage is null ? "" : $"\n{r.ErrorMessage}");

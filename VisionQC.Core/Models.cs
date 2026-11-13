@@ -14,9 +14,9 @@ public sealed record PreprocessedImage(string Path, float[] Data, int Width, int
 public sealed record Detection(string Type, float Confidence, int X, int Y, int W, int H);
 
 /// <summary>모델 출력. 분류 모델은 Score(불량 확률)만, 검출 모델은 Detections를 채운다.</summary>
-public sealed record InferenceOutput(float Score, IReadOnlyList<Detection> Detections)
+public sealed record InferenceOutput(float Score, IReadOnlyList<Detection> Detections, Heatmap? Heatmap = null)
 {
-    public static InferenceOutput FromScore(float score) => new(score, Array.Empty<Detection>());
+    public static InferenceOutput FromScore(float score, Heatmap? heatmap = null) => new(score, Array.Empty<Detection>(), heatmap);
 }
 
 public sealed record Judgement(Verdict Verdict, float Score, IReadOnlyList<Detection> Defects, string? Reason = null);
@@ -45,6 +45,8 @@ public sealed record InspectionResult
     public string? ErrorMessage { get; init; }
     public DateTime InspectedAtUtc { get; init; } = DateTime.UtcNow;
     public IReadOnlyList<Detection> Defects { get; init; } = Array.Empty<Detection>();
+    /// <summary>불량 위치 히트맵(CAM 출력이 있는 모델일 때). 이력에는 NG 결과만 저장한다.</summary>
+    public Heatmap? Heatmap { get; init; }
 }
 
 public sealed record HistoryFilter(DateTime? FromUtc = null, DateTime? ToUtc = null, Verdict? Verdict = null, int Limit = 500);

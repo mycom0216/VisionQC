@@ -65,6 +65,23 @@ public sealed class SqliteResultRepository : IResultRepository
             CREATE INDEX IF NOT EXISTS ix_review_result ON result_review(result_id);
             """;
         cmd.ExecuteNonQuery();
+        EnsureHeatmapColumn(c);
+    }
+
+    /// <summary>이전 버전 DB에는 heatmap 열이 없다 — 열 때 한 번 추가한다(기존 데이터는 NULL = 히트맵 없음).</summary>
+    private static void EnsureHeatmapColumn(SqliteConnection c)
+    {
+        bool has = false;
+        using (var info = c.CreateCommand())
+        {
+            info.CommandText = "PRAGMA table_info(inspection_result)";
+            using var rd = info.ExecuteReader();
+            while (rd.Read()) if (string.Equals(rd.GetString(1), "heatmap", StringComparison.OrdinalIgnoreCase)) has = true;
+        }
+        if (has) return;
+        using var alter = c.CreateCommand();
+        alter.CommandText = "ALTER TABLE inspection_result ADD COLUMN heatmap BLOB NULL";
+        alter.ExecuteNonQuery();
     }
 
     private static string Iso(DateTime utc) => utc.ToUniversalTime().ToString("o", CultureInfo.InvariantCulture);
@@ -107,9 +124,16 @@ public sealed class SqliteResultRepository : IResultRepository
         {
             cmd.Transaction = tx;
             cmd.CommandText = """
-                INSERT INTO inspection_result(job_id,image_path,verdict,score,elapsed_ms,error_message,inspected_at)
-                VALUES($j,$p,$v,$s,$e,$m,$at); SELECT last_insert_rowid();
+                INSERT INTO inspection_result(job_id,image_path,verdict,score,elapsed_ms,error_message,inspected_at,heatmap)
+                VALUES($j,$p,$v,$s,$e,$m,$at,$hm); SELECT last_insert_rowid();
                 """;
+            // 히트맵은 NG 결과만 저장(OK에는 의미가 없고 DB만 커진다). 직렬화에 실패해도 결과 자체는 잃지 않는다.
+            object hm = DBNull.Value;
+            if (r.Verdict == Verdict.NG && r.Heatmap is { } map)
+            {
+                try { hm = HeatmapMath.Serialize(map); } catch (ArgumentException) { }
+            }
+            cmd.Parameters.AddWithValue("$hm", hm);
             cmd.Parameters.AddWithValue("$j", r.JobId);
             cmd.Parameters.AddWithValue("$p", r.ImagePath);
             cmd.Parameters.AddWithValue("$v", r.Verdict.ToString());
@@ -146,7 +170,7 @@ public sealed class SqliteResultRepository : IResultRepository
         if (f.FromUtc is { } from) { where.Add("inspected_at >= $from"); cmd.Parameters.AddWithValue("$from", Iso(from)); }
         if (f.ToUtc is { } to) { where.Add("inspected_at <= $to"); cmd.Parameters.AddWithValue("$to", Iso(to)); }
         if (f.Verdict is { } v) { where.Add("verdict = $v"); cmd.Parameters.AddWithValue("$v", v.ToString()); }
-        cmd.CommandText = "SELECT id,job_id,image_path,verdict,score,elapsed_ms,error_message,inspected_at FROM inspection_result"
+        cmd.CommandText = "SELECT id,job_id,image_path,verdict,score,elapsed_ms,error_message,inspected_at,heatmap FROM inspection_result"
             + (where.Count > 0 ? " WHERE " + string.Join(" AND ", where) : "")
             + " ORDER BY inspected_at DESC, id DESC LIMIT $limit";
         cmd.Parameters.AddWithValue("$limit", Math.Clamp(f.Limit, 1, 10000));
@@ -162,7 +186,8 @@ public sealed class SqliteResultRepository : IResultRepository
                     Verdict = Enum.Parse<Verdict>(rd.GetString(3)), Score = (float)rd.GetDouble(4),
                     ElapsedMs = rd.GetInt32(5), ErrorMessage = rd.IsDBNull(6) ? null : rd.GetString(6),
                     InspectedAtUtc = DateTime.Parse(rd.GetString(7), CultureInfo.InvariantCulture,
-                        DateTimeStyles.RoundtripKind)
+                        DateTimeStyles.RoundtripKind),
+                    Heatmap = rd.IsDBNull(8) ? null : HeatmapMath.TryDeserialize((byte[])rd[8])
                 });
             }
         }
@@ -186,6 +211,51 @@ public sealed class SqliteResultRepository : IResultRepository
             }
         }
         return rows.Select(r => defects.TryGetValue(r.Id, out var d) ? r with { Defects = d } : r).ToList();
+    }
+
+    /// <summary>이력 정리의 안전 장치: 이보다 최근 데이터는 지울 수 없다.</summary>
+    public const int MinRetentionDays = 30;
+
+    public sealed record PurgeResult(int Results, int Jobs);
+
+    public async Task<int> CountOlderThanAsync(DateTime cutoffUtc, CancellationToken ct = default)
+    {
+        await using var c = Open();
+        await using var cmd = c.CreateCommand();
+        cmd.CommandText = "SELECT COUNT(*) FROM inspection_result WHERE inspected_at < $c";
+        cmd.Parameters.AddWithValue("$c", Iso(cutoffUtc));
+        return Convert.ToInt32(await cmd.ExecuteScalarAsync(ct).ConfigureAwait(false));
+    }
+
+    /// <summary>
+    /// cutoff보다 오래된 검사 결과를 삭제한다(불량 목록·정정은 외래 키 CASCADE로 함께 삭제). 결과가 하나도 안 남은 회차도 지운다(진행 중 회차 제외).
+    /// 감사 로그·계정은 건드리지 않는다. <b>되돌릴 수 없으므로</b> 호출하는 쪽이 먼저 백업해야 하며,
+    /// 실수 방지로 최근 <see cref="MinRetentionDays"/>일 이내를 가리키는 cutoff는 거부한다.
+    /// </summary>
+    public async Task<PurgeResult> PurgeOlderThanAsync(DateTime cutoffUtc, DateTime? nowUtc = null, CancellationToken ct = default)
+    {
+        var now = nowUtc ?? DateTime.UtcNow;
+        if (cutoffUtc.ToUniversalTime() > now.AddDays(-MinRetentionDays))
+            throw new ArgumentOutOfRangeException(nameof(cutoffUtc), $"최근 {MinRetentionDays}일 이내의 이력은 삭제할 수 없습니다.");
+
+        await using var c = Open();
+        await using var tx = (SqliteTransaction)await c.BeginTransactionAsync(ct).ConfigureAwait(false);
+        int results, jobs;
+        await using (var cmd = c.CreateCommand())
+        {
+            cmd.Transaction = tx;
+            cmd.CommandText = "DELETE FROM inspection_result WHERE inspected_at < $c";
+            cmd.Parameters.AddWithValue("$c", Iso(cutoffUtc));
+            results = await cmd.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
+        }
+        await using (var cmd = c.CreateCommand())
+        {
+            cmd.Transaction = tx;
+            cmd.CommandText = "DELETE FROM inspection_job WHERE status <> 'Running' AND id NOT IN (SELECT DISTINCT job_id FROM inspection_result)";
+            jobs = await cmd.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
+        }
+        await tx.CommitAsync(ct).ConfigureAwait(false);
+        return new PurgeResult(results, jobs);
     }
 
     public async Task AddReviewAsync(Review r, CancellationToken ct = default)

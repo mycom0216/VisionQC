@@ -102,7 +102,8 @@ public sealed class InspectionPipeline
             return new InspectionResult
             {
                 JobId = jobId, ImagePath = frame.Path, Verdict = j.Verdict, Score = j.Score,
-                ElapsedMs = (int)sw.ElapsedMilliseconds, ErrorMessage = j.Reason, Defects = j.Defects
+                ElapsedMs = (int)sw.ElapsedMilliseconds, ErrorMessage = j.Reason, Defects = j.Defects,
+                Heatmap = HeatmapMath.WithRegion(output.Heatmap, settings.Roi)     // ROI를 썼다면 히트맵이 덮는 영역도 ROI
             };
         }
         catch (Exception ex)

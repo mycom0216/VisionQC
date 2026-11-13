@@ -40,6 +40,11 @@ public sealed record AppSettings
     public Roi? Roi { get; init; }
     /// <summary>무조작 자동 로그아웃(분, 1~480). 검사·감시 중에는 적용하지 않는다. 끌 수는 없다(보안 기본값 15분).</summary>
     public int IdleTimeoutMinutes { get; init; } = IdleMonitor.DefaultMinutes;
+    /// <summary>자동 백업 주기(시간, 0=끔, 최대 720). 앱이 켜져 있고 누군가 로그인해 있을 때만 동작한다(서비스가 아님).</summary>
+    public int AutoBackupHours { get; init; } = DefaultAutoBackupHours;
+
+    public const int DefaultAutoBackupHours = 24, MaxAutoBackupHours = 720;
+    public static bool IsValidAutoBackupHours(int h) => h >= 0 && h <= MaxAutoBackupHours;
 
     public InspectionSettings ToInspectionSettings() => new() { Threshold = (float)Threshold, Roi = Roi };
 }
@@ -84,7 +89,13 @@ public sealed class SettingsStore
                 warnings.Add($"자동 로그아웃 시간이 범위({IdleMonitor.MinMinutes}~{IdleMonitor.MaxMinutes}분)를 벗어나 {IdleMonitor.DefaultMinutes}분으로 되돌렸습니다.");
                 idle = IdleMonitor.DefaultMinutes;
             }
-            return (s with { Threshold = threshold, Roi = roi, IdleTimeoutMinutes = idle, FolderPath = s.FolderPath ?? "", ModelPath = s.ModelPath ?? "" },
+            var autoBackup = s.AutoBackupHours;
+            if (!AppSettings.IsValidAutoBackupHours(autoBackup))
+            {
+                warnings.Add($"자동 백업 주기가 범위(0~{AppSettings.MaxAutoBackupHours}시간)를 벗어나 {AppSettings.DefaultAutoBackupHours}시간으로 되돌렸습니다.");
+                autoBackup = AppSettings.DefaultAutoBackupHours;
+            }
+            return (s with { Threshold = threshold, Roi = roi, IdleTimeoutMinutes = idle, AutoBackupHours = autoBackup, FolderPath = s.FolderPath ?? "", ModelPath = s.ModelPath ?? "" },
                 warnings.Count == 0 ? null : string.Join(" ", warnings));
         }
         catch (Exception ex) when (ex is JsonException or IOException or UnauthorizedAccessException)
@@ -101,6 +112,9 @@ public sealed class SettingsStore
             throw new ArgumentException("임계값은 0~1 사이여야 합니다.", nameof(s));
         if (!IdleMonitor.IsValidMinutes(s.IdleTimeoutMinutes))
             throw new ArgumentException($"자동 로그아웃 시간은 {IdleMonitor.MinMinutes}~{IdleMonitor.MaxMinutes}분이어야 합니다.", nameof(s));
+
+        if (!AppSettings.IsValidAutoBackupHours(s.AutoBackupHours))
+            throw new ArgumentException($"자동 백업 주기는 0~{AppSettings.MaxAutoBackupHours}시간이어야 합니다.", nameof(s));
 
         var dir = System.IO.Path.GetDirectoryName(System.IO.Path.GetFullPath(Path));
         if (!string.IsNullOrEmpty(dir)) Directory.CreateDirectory(dir);

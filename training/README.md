@@ -44,6 +44,18 @@ python train.py --data data --out out --epochs 20
 
 일치 확인: `python parity_cases.py ...` 출력을 `VISIONQC_PARITY_CASES`에, 모델 경로를 `VISIONQC_PARITY_MODEL`에 넣고 `dotnet test --filter OnnxParityTests`.
 
+## 불량 위치 히트맵(CAM) — 선택
+
+재학습 없이 기존 `model.onnx`에 위치별 증거 출력 `cam`([1,1,7,7])을 덧붙인다. 원래 `logits`는 그대로다(항등식으로 검증).
+
+```bash
+python add_cam_output.py --onnx out/model.onnx --out out/model_cam.onnx --data data      # 로짓 불변·항등식 확인까지
+python eval_cam.py --model out/model_cam.onnx --data data --src <압축 푼 MVTec 루트> --category metal_nut --split out/split.json
+```
+
+앱 설정 탭의 모델을 `model_cam.onnx`로 지정하면 NG 결과에 히트맵이 겹친다. 7×7이라 윤곽이 아닌 대략적 위치다 — 방식·정확도·한계는 [docs/09_히트맵위치정확도.md](../docs/09_히트맵위치정확도.md). 구조 가정: `GlobalAveragePool → Gemm`(2클래스)로 끝나는 ResNet 계열.
+C# 확인: `VISIONQC_PARITY_MODEL_CAM=out/model_cam.onnx`(와 위 두 변수)를 넣고 `dotnet test --filter OnnxCamOutputTests`.
+
 ## 평가 원칙
 
 - 분할은 클래스 비율을 유지한 train/val/test, seed 고정. 시험셋은 **학습·에폭 선택·임계값 선택에 쓰지 않는다**(최종 1회 평가).
@@ -54,5 +66,5 @@ python train.py --data data --out out --epochs 20
 ## 테스트
 
 ```bash
-python -m unittest test_common -v
+python -m unittest test_common test_prepare test_cam -v      # test_cam은 onnx·onnxruntime 필요(torch 불필요)
 ```

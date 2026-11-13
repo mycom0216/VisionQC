@@ -33,6 +33,7 @@ public partial class SettingsViewModel : ObservableObject
     [ObservableProperty] private double _roiW = 100;
     [ObservableProperty] private double _roiH = 100;
     [ObservableProperty] private string _idleMinutesText = "15";
+    [ObservableProperty] private string _autoBackupHoursText = "24";
     [ObservableProperty] private string _message = "";
     [ObservableProperty] private string _fileInfo = "";
 
@@ -68,6 +69,7 @@ public partial class SettingsViewModel : ObservableObject
         RoiW = Math.Round((s.Roi?.W ?? 1) * 100);
         RoiH = Math.Round((s.Roi?.H ?? 1) * 100);
         IdleMinutesText = s.IdleTimeoutMinutes.ToString(CultureInfo.InvariantCulture);
+        AutoBackupHoursText = s.AutoBackupHours.ToString(CultureInfo.InvariantCulture);
         Message = "";
     }
 
@@ -98,12 +100,15 @@ public partial class SettingsViewModel : ObservableObject
         if (!int.TryParse(IdleMinutesText, NumberStyles.Integer, CultureInfo.InvariantCulture, out var idle) || !IdleMonitor.IsValidMinutes(idle))
         { Message = $"자동 로그아웃 시간은 {IdleMonitor.MinMinutes}~{IdleMonitor.MaxMinutes}분의 정수여야 합니다."; return; }
 
+        if (!int.TryParse(AutoBackupHoursText, NumberStyles.Integer, CultureInfo.InvariantCulture, out var autoBackup) || !AppSettings.IsValidAutoBackupHours(autoBackup))
+        { Message = $"자동 백업 주기는 0(끔)~{AppSettings.MaxAutoBackupHours}시간의 정수여야 합니다."; return; }
+
         var cur = _svc.Effective;
         var model = ModelPath.Trim();
         if (model.Length > 0 && model != cur.ModelPath && !File.Exists(model))
         { Message = "모델 파일을 찾을 수 없습니다."; return; }
 
-        var next = cur with { ModelPath = model, Threshold = thr, Roi = roi, IdleTimeoutMinutes = idle };
+        var next = cur with { ModelPath = model, Threshold = thr, Roi = roi, IdleTimeoutMinutes = idle, AutoBackupHours = autoBackup };
         var changes = Describe(cur, next);
         if (changes.Count == 0) { Message = "변경된 내용이 없습니다."; return; }
 
@@ -122,6 +127,7 @@ public partial class SettingsViewModel : ObservableObject
         if (Math.Abs(a.Threshold - b.Threshold) > 1e-9) list.Add($"임계값 {a.Threshold:F3}→{b.Threshold:F3}");
         if (a.Roi != b.Roi) list.Add($"ROI {RoiText(a.Roi)}→{RoiText(b.Roi)}");
         if (a.IdleTimeoutMinutes != b.IdleTimeoutMinutes) list.Add($"자동 로그아웃 {a.IdleTimeoutMinutes}분→{b.IdleTimeoutMinutes}분");
+        if (a.AutoBackupHours != b.AutoBackupHours) list.Add($"자동 백업 {a.AutoBackupHours}시간→{b.AutoBackupHours}시간");
         return list;
     }
 
