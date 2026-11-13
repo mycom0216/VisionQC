@@ -14,7 +14,7 @@
 | `VisionQC.App` | WPF 검사·이력 화면 |
 | `VisionQC.Tests` | xUnit 테스트 |
 | `training/` | PyTorch 학습·ONNX 내보내기·평가, MVTec AD 변환 ([README](training/README.md), [DATASET](training/DATASET.md)) |
-| `docs/` | [분석서](docs/01_분석서.md), [설계서](docs/02_설계서.md), 화면 캡처 |
+| `docs/` | [분석서](docs/01_분석서.md) · [설계서](docs/02_설계서.md) · [요구사항명세서](docs/03_요구사항명세서.md) · [데이터정의서](docs/04_데이터정의서.md) · `05_개발일정표.xlsx` · [포트폴리오](docs/06_포트폴리오.md) · 화면 캡처 |
 
 ## 실행
 
