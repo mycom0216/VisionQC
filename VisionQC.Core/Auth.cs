@@ -52,11 +52,13 @@ public static class AuditActions
     public const string UserDeactivate = "user.deactivate";
     public const string PasswordChange = "password.change";
     public const string PasswordReset = "password.reset";
+    public const string SessionTimeout = "session.timeout";
+    public const string DbBackup = "db.backup";
 
     public static readonly string[] All =
     {
-        LoginSuccess, LoginFail, LoginLocked, Logout, InspectionStart, InspectionEnd, ReviewCorrect,
-        SettingsChange, UserCreate, UserActivate, UserDeactivate, PasswordChange, PasswordReset
+        LoginSuccess, LoginFail, LoginLocked, Logout, SessionTimeout, InspectionStart, InspectionEnd, ReviewCorrect,
+        SettingsChange, UserCreate, UserActivate, UserDeactivate, PasswordChange, PasswordReset, DbBackup
     };
 }
 

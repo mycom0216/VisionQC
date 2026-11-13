@@ -14,6 +14,9 @@ public partial class MainWindow : Window
     private readonly ReviewViewModel _review;
     private readonly SettingsViewModel _settings;
     private readonly AdminViewModel _admin;
+    private readonly InspectionViewModel _inspection;
+    private readonly System.Windows.Threading.DispatcherTimer _idleTimer;
+    private IdleMonitor _idle;
     private bool _autoRunDone;
 
     public MainWindow(AppServices svc, Session session)
@@ -22,12 +25,27 @@ public partial class MainWindow : Window
         _svc = svc;
         _session = session;
 
+        // 자동 로그아웃: 마우스·키보드 입력이 없으면 지정 시간 뒤 로그아웃. 검사·감시 중에는 만료시키지 않는다.
+        _idle = new IdleMonitor(TimeSpan.FromMinutes(svc.Effective.IdleTimeoutMinutes));
+        _idleTimer = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromSeconds(5) };
+        _idleTimer.Tick += IdleTimer_Tick;
+        _idleTimer.Start();
+        System.Windows.Input.InputManager.Current.PreProcessInput += OnAnyInput;
+        svc.SettingsChanged += OnSettingsChanged;
+        Closed += (_, _) =>
+        {
+            _idleTimer.Stop();
+            System.Windows.Input.InputManager.Current.PreProcessInput -= OnAnyInput;
+            _svc.SettingsChanged -= OnSettingsChanged;
+        };
+
         // 화면마다 필요한 권한이 다르다. 권한이 없는 탭은 아예 보이지 않는다.
         // (보이지 않아도 각 동작은 서비스 계층에서 다시 검사한다: 정정=Session.Can, 사용자 관리=AuthService가 저장소의 현재 권한으로 확인)
         UserLabel.Text = $"{session.User.LoginId} · {session.User.Role}";
         Title = $"VisionQC - AI 외관검사  [{session.User.LoginId}]";
 
         var inspection = new InspectionViewModel(svc, session);
+        _inspection = inspection;
         InspectionTab.DataContext = inspection;
         _history = new HistoryViewModel(svc.Results);
         HistoryTab.DataContext = _history;
@@ -60,6 +78,23 @@ public partial class MainWindow : Window
                 };
                 if (target is { Visibility: Visibility.Visible }) Tabs.SelectedItem = target;
             };
+    }
+
+    private void OnAnyInput(object sender, System.Windows.Input.PreProcessInputEventArgs e)
+    {
+        if (e.StagingItem.Input is System.Windows.Input.MouseEventArgs or System.Windows.Input.KeyboardEventArgs) _idle.Touch();
+    }
+
+    private void OnSettingsChanged() => _idle = new IdleMonitor(TimeSpan.FromMinutes(_svc.Effective.IdleTimeoutMinutes));
+
+    private async void IdleTimer_Tick(object? sender, EventArgs e)
+    {
+        if (!_idle.IsExpired(busy: _inspection.IsRunning)) return;
+        _idleTimer.Stop();
+        await _session.AuditAsync(AuditActions.SessionTimeout, $"무조작 {_svc.Effective.IdleTimeoutMinutes}분");
+        _svc.LogoutNotice = $"{_svc.Effective.IdleTimeoutMinutes}분 동안 사용이 없어 자동 로그아웃했습니다. 다시 로그인하세요.";
+        _svc.LogoutRequested = true;
+        Close();
     }
 
     private static void SetVisible(TabItem tab, bool visible) => tab.Visibility = visible ? Visibility.Visible : Visibility.Collapsed;

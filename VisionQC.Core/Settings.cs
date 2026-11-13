@@ -38,6 +38,8 @@ public sealed record AppSettings
     public string ModelPath { get; init; } = "";
     public double Threshold { get; init; } = 0.5;
     public Roi? Roi { get; init; }
+    /// <summary>무조작 자동 로그아웃(분, 1~480). 검사·감시 중에는 적용하지 않는다. 끌 수는 없다(보안 기본값 15분).</summary>
+    public int IdleTimeoutMinutes { get; init; } = IdleMonitor.DefaultMinutes;
 
     public InspectionSettings ToInspectionSettings() => new() { Threshold = (float)Threshold, Roi = Roi };
 }
@@ -76,7 +78,13 @@ public sealed class SettingsStore
                 warnings.Add($"ROI가 올바르지 않아 사용하지 않습니다({problem})");
                 roi = null;
             }
-            return (s with { Threshold = threshold, Roi = roi, FolderPath = s.FolderPath ?? "", ModelPath = s.ModelPath ?? "" },
+            var idle = s.IdleTimeoutMinutes;
+            if (!IdleMonitor.IsValidMinutes(idle))
+            {
+                warnings.Add($"자동 로그아웃 시간이 범위({IdleMonitor.MinMinutes}~{IdleMonitor.MaxMinutes}분)를 벗어나 {IdleMonitor.DefaultMinutes}분으로 되돌렸습니다.");
+                idle = IdleMonitor.DefaultMinutes;
+            }
+            return (s with { Threshold = threshold, Roi = roi, IdleTimeoutMinutes = idle, FolderPath = s.FolderPath ?? "", ModelPath = s.ModelPath ?? "" },
                 warnings.Count == 0 ? null : string.Join(" ", warnings));
         }
         catch (Exception ex) when (ex is JsonException or IOException or UnauthorizedAccessException)
@@ -91,6 +99,8 @@ public sealed class SettingsStore
         if (s.Roi?.Validate() is { } problem) throw new ArgumentException(problem, nameof(s));
         if (!double.IsFinite(s.Threshold) || s.Threshold < 0 || s.Threshold > 1)
             throw new ArgumentException("임계값은 0~1 사이여야 합니다.", nameof(s));
+        if (!IdleMonitor.IsValidMinutes(s.IdleTimeoutMinutes))
+            throw new ArgumentException($"자동 로그아웃 시간은 {IdleMonitor.MinMinutes}~{IdleMonitor.MaxMinutes}분이어야 합니다.", nameof(s));
 
         var dir = System.IO.Path.GetDirectoryName(System.IO.Path.GetFullPath(Path));
         if (!string.IsNullOrEmpty(dir)) Directory.CreateDirectory(dir);

@@ -35,7 +35,9 @@
 
                     <StackPanel Grid.Row="2" Grid.ColumnSpan="3" Orientation="Horizontal">
                         <Button Content="▶ 시작" Command="{Binding StartCommand}" Padding="16,4" Margin="0,0,8,0" AutomationProperties.AutomationId="StartButton"/>
-                        <Button Content="■ 중지" Command="{Binding StopCommand}" Padding="16,4"/>
+                        <Button Content="■ 중지" Command="{Binding StopCommand}" Padding="16,4" Margin="0,0,16,0" AutomationProperties.AutomationId="StopButton"/>
+                        <CheckBox Content="폴더 감시(새 이미지 자동 검사)" IsChecked="{Binding WatchMode}" VerticalAlignment="Center"
+                                  IsEnabled="{Binding IsRunning, Converter={StaticResource InvertBool}}" AutomationProperties.AutomationId="WatchMode"/>
                     </StackPanel>
                 </Grid>
 
@@ -281,6 +283,10 @@
                     <TextBlock Grid.Row="3" Text="높이 H (%)"/><Slider Grid.Row="3" Grid.Column="1" Minimum="5" Maximum="100" TickFrequency="1" IsSnapToTickEnabled="True" Value="{Binding RoiH}"/><TextBlock Grid.Row="3" Grid.Column="2" Text="{Binding RoiH}" Margin="8,0,0,0"/>
                 </Grid>
 
+                <TextBlock Text="자동 로그아웃 (무조작 시간, 분 · 검사/감시 중에는 적용 안 됨)"/>
+                <TextBox Text="{Binding IdleMinutesText, UpdateSourceTrigger=LostFocus}" Width="70" HorizontalAlignment="Left" Margin="0,2,0,14"
+                         AutomationProperties.AutomationId="SettingsIdleMinutes"/>
+
                 <StackPanel Orientation="Horizontal">
                     <Button Content="저장" Command="{Binding SaveCommand}" Padding="22,4" Margin="0,0,8,0" AutomationProperties.AutomationId="SettingsSave"/>
                     <Button Content="되돌리기" Command="{Binding RevertCommand}" Padding="16,4"/>
@@ -330,7 +336,10 @@
                     <TextBlock Text="감사 로그" FontWeight="SemiBold" VerticalAlignment="Center" Margin="0,0,16,0"/>
                     <ComboBox ItemsSource="{Binding ActionOptions}" SelectedItem="{Binding SelectedAction}" Width="150"/>
                     <Button Content="조회" Command="{Binding RefreshAuditCommand}" Padding="16,2" Margin="8,0,12,0"/>
-                    <TextBlock Text="{Binding AuditMessage}" VerticalAlignment="Center" Foreground="DimGray"/>
+                    <TextBlock Text="{Binding AuditMessage}" VerticalAlignment="Center" Foreground="DimGray" Margin="0,0,24,0"/>
+                    <Button Content="DB 백업" Command="{Binding BackupCommand}" Padding="14,2" Margin="0,0,8,0" AutomationProperties.AutomationId="BackupButton"/>
+                    <TextBlock Text="{Binding BackupMessage}" VerticalAlignment="Center" Foreground="DimGray" MaxWidth="420" TextTrimming="CharacterEllipsis"
+                               AutomationProperties.AutomationId="BackupMessage"/>
                 </StackPanel>
                 <DataGrid Grid.Row="3" ItemsSource="{Binding Audit}" AutoGenerateColumns="False" IsReadOnly="True" HeadersVisibility="Column"
                           AutomationProperties.AutomationId="AuditGrid">

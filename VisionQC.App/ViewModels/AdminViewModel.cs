@@ -73,6 +73,23 @@ public partial class AdminViewModel : ObservableObject
         catch (Exception ex) { AuditMessage = $"감사 로그 조회 실패: {ex.Message}"; }
     }
 
+    [ObservableProperty] private string _backupMessage = "";
+
+    /// <summary>DB를 백업 폴더에 일관된 사본으로 저장하고(무결성 검사 포함) 오래된 백업을 정리한다. 관리자만.</summary>
+    [RelayCommand]
+    public async Task BackupAsync()
+    {
+        if (!_session.Can(Permission.ManageUsers)) { BackupMessage = "백업 권한이 없습니다(관리자)."; return; }
+        try
+        {
+            var r = await VisionQC.Data.SqliteBackup.CreateAsync(_svc.DbPath, _svc.BackupDir);
+            await _session.AuditAsync(AuditActions.DbBackup, $"{System.IO.Path.GetFileName(r.Path)} ({r.Bytes / 1024:N0} KB)" + (r.Pruned > 0 ? $", 오래된 백업 {r.Pruned}개 정리" : ""));
+            BackupMessage = $"백업 완료: {r.Path} ({r.Bytes / 1024:N0} KB, 무결성 검사 통과)" + (r.Pruned > 0 ? $" · 오래된 백업 {r.Pruned}개 정리" : "");
+            await RefreshAuditAsync();
+        }
+        catch (Exception ex) { BackupMessage = $"백업 실패: {ex.Message}"; }
+    }
+
     public async Task<bool> CreateUserAsync(string loginId, string password, Role role)
     {
         try

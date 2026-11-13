@@ -6,3 +6,6 @@ obj/
 *.db-shm
 *.db-wal
 TestResults/
+
+# 배포 산출물
+publish/

@@ -14,6 +14,8 @@ public sealed class AppServices
     public AuthService Auth { get; }
     public SettingsStore SettingsStore { get; }
     public string DbPath { get; }
+    /// <summary>DB 백업 폴더(기본 %LOCALAPPDATA%\VisionQC\backup, 실행 인자 --backup-dir).</summary>
+    public string BackupDir { get; }
     public string? SettingsWarning { get; }
 
     /// <summary>파일에 저장된 설정.</summary>
@@ -23,6 +25,8 @@ public sealed class AppServices
 
     public Session? Session { get; set; }
     public bool LogoutRequested { get; set; }
+    /// <summary>다시 뜬 로그인 창에 보여 줄 안내(자동 로그아웃 사유 등). 한 번 쓰면 비운다.</summary>
+    public string? LogoutNotice { get; set; }
 
     public event Action? SettingsChanged;
 
@@ -31,6 +35,7 @@ public sealed class AppServices
         Args = args;
         var local = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
         DbPath = args.GetValueOrDefault("db") ?? Path.Combine(local, "VisionQC", "visionqc.db");
+        BackupDir = args.GetValueOrDefault("backup-dir") ?? Path.Combine(local, "VisionQC", "backup");
         Results = new SqliteResultRepository(DbPath);
         Accounts = new SqliteAccountRepository(DbPath);
         Audit = new AuditLogger(Accounts);

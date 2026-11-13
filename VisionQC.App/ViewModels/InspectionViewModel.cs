@@ -28,6 +28,9 @@ public partial class InspectionViewModel : ObservableObject
 
     [ObservableProperty] private string _folderPath;
 
+    /// <summary>true면 폴더에 새로 생기는 이미지를 계속 검사한다(중지 버튼으로 끝). 시작할 때 이미 있던 파일은 검사하지 않는다.</summary>
+    [ObservableProperty] private bool _watchMode;
+
     /// <summary>모델·임계값·ROI는 설정 탭(엔지니어 이상)에서 바꾼다. 여기서는 지금 값을 보여 주기만 한다.</summary>
     public string SettingsSummary
     {
@@ -89,22 +92,27 @@ public partial class InspectionViewModel : ObservableObject
         Recent.Clear();
         VerdictText = "-"; VerdictBrush = Brushes.Gray; DetailText = ""; CurrentImage = null;
         IsRunning = true;
-        StatusMessage = $"검사 중… (모델 {engine.Model.Name} / {engine.Model.Version})";
+        bool watch = WatchMode;
+        StatusMessage = watch
+            ? $"감시 중… 폴더에 새로 생기는 이미지를 자동 검사합니다. 중지 버튼으로 끝냅니다. (모델 {engine.Model.Name} / {engine.Model.Version})"
+            : $"검사 중… (모델 {engine.Model.Name} / {engine.Model.Version})";
         _cts = new CancellationTokenSource();
 
         var settings = cfg.ToInspectionSettings();
         await _session.AuditAsync(AuditActions.InspectionStart,
-            $"{FolderPath} · 모델 {engine.Model.Version} · 임계값 {cfg.Threshold:F3}" + (cfg.Roi is null ? "" : " · ROI 사용"));
+            $"{FolderPath} · 모델 {engine.Model.Version} · 임계값 {cfg.Threshold:F3}" + (cfg.Roi is null ? "" : " · ROI 사용") + (watch ? " · 폴더 감시" : ""));
 
         var pipeline = new InspectionPipeline(new OpenCvPreprocessor(), engine, new ThresholdJudge(), _svc.Results);
         var progress = new Progress<InspectionResult>(OnResult);   // UI 스레드에서 만들었으므로 콜백도 UI 스레드
 
         try
         {
-            var sum = await pipeline.RunAsync(new FolderImageSource(FolderPath), settings, progress, _cts.Token);
+            IImageSource source = watch ? new FolderWatchImageSource(FolderPath) : new FolderImageSource(FolderPath);
+            var sum = await pipeline.RunAsync(source, settings, progress, _cts.Token);
             StatusMessage = sum.Status switch
             {
                 JobStatus.Completed => $"완료: 총 {sum.Total}장 (OK {sum.Ok} / NG {sum.Ng} / ERROR {sum.Error})",
+                JobStatus.Cancelled when watch => $"감시 종료: {sum.Total}장 처리 (OK {sum.Ok} / NG {sum.Ng} / ERROR {sum.Error})",
                 JobStatus.Cancelled => $"중지됨: {sum.Total}장 처리",
                 _ => $"실패: {sum.FatalError}"
             };

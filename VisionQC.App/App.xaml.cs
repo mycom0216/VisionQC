@@ -53,7 +53,8 @@ public partial class App : Application
             main.ShowDialog();
 
             if (!svc.LogoutRequested) break;      // 창을 그냥 닫으면 종료, 로그아웃이면 로그인 창으로
-            notice = "로그아웃했습니다. 다시 로그인하세요.";
+            notice = svc.LogoutNotice ?? "로그아웃했습니다. 다시 로그인하세요.";
+            svc.LogoutNotice = null;
         }
         Shutdown();
     }

@@ -1,5 +1,6 @@
 <Solution>
   <Project Path="VisionQC.App/VisionQC.App.csproj" />
+  <Project Path="VisionQC.Bench/VisionQC.Bench.csproj" />
   <Project Path="VisionQC.Core/VisionQC.Core.csproj" />
   <Project Path="VisionQC.Data/VisionQC.Data.csproj" />
   <Project Path="VisionQC.Imaging/VisionQC.Imaging.csproj" />

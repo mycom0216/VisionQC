@@ -32,6 +32,7 @@ public partial class SettingsViewModel : ObservableObject
     [ObservableProperty] private double _roiY;
     [ObservableProperty] private double _roiW = 100;
     [ObservableProperty] private double _roiH = 100;
+    [ObservableProperty] private string _idleMinutesText = "15";
     [ObservableProperty] private string _message = "";
     [ObservableProperty] private string _fileInfo = "";
 
@@ -66,6 +67,7 @@ public partial class SettingsViewModel : ObservableObject
         RoiY = Math.Round((s.Roi?.Y ?? 0) * 100);
         RoiW = Math.Round((s.Roi?.W ?? 1) * 100);
         RoiH = Math.Round((s.Roi?.H ?? 1) * 100);
+        IdleMinutesText = s.IdleTimeoutMinutes.ToString(CultureInfo.InvariantCulture);
         Message = "";
     }
 
@@ -93,12 +95,15 @@ public partial class SettingsViewModel : ObservableObject
             if (roi.Validate() is { } problem) { Message = problem; return; }
         }
 
+        if (!int.TryParse(IdleMinutesText, NumberStyles.Integer, CultureInfo.InvariantCulture, out var idle) || !IdleMonitor.IsValidMinutes(idle))
+        { Message = $"자동 로그아웃 시간은 {IdleMonitor.MinMinutes}~{IdleMonitor.MaxMinutes}분의 정수여야 합니다."; return; }
+
         var cur = _svc.Effective;
         var model = ModelPath.Trim();
         if (model.Length > 0 && model != cur.ModelPath && !File.Exists(model))
         { Message = "모델 파일을 찾을 수 없습니다."; return; }
 
-        var next = cur with { ModelPath = model, Threshold = thr, Roi = roi };
+        var next = cur with { ModelPath = model, Threshold = thr, Roi = roi, IdleTimeoutMinutes = idle };
         var changes = Describe(cur, next);
         if (changes.Count == 0) { Message = "변경된 내용이 없습니다."; return; }
 
@@ -116,6 +121,7 @@ public partial class SettingsViewModel : ObservableObject
         if (a.ModelPath != b.ModelPath) list.Add($"모델 {Name(a.ModelPath)}→{Name(b.ModelPath)}");
         if (Math.Abs(a.Threshold - b.Threshold) > 1e-9) list.Add($"임계값 {a.Threshold:F3}→{b.Threshold:F3}");
         if (a.Roi != b.Roi) list.Add($"ROI {RoiText(a.Roi)}→{RoiText(b.Roi)}");
+        if (a.IdleTimeoutMinutes != b.IdleTimeoutMinutes) list.Add($"자동 로그아웃 {a.IdleTimeoutMinutes}분→{b.IdleTimeoutMinutes}분");
         return list;
     }
 
