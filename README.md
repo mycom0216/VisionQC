@@ -21,14 +21,14 @@
 ```bash
 dotnet test VisionQC.Tests
 dotnet run --project VisionQC.App
-# 인자: --folder <이미지폴더> --model <model.onnx> --threshold 0.5 --db <파일> --autorun --tab history
+# 인자: --folder <이미지폴더> --model <model.onnx> --threshold 0.5 --db <파일> --autorun --tab history|stats
 ```
 
 모델은 `training/`으로 직접 학습해 만든다(저장소에 포함하지 않음).
 
 ## 현재 상태 (정직하게)
 
-- MVP: 폴더 입력 → 전처리 → ONNX 분류 → 판정 → SQLite 이력 → 검사·이력 화면.
+- MVP: 폴더 입력 → 전처리 → ONNX 분류 → 판정 → SQLite 이력 → 검사·이력·통계 화면.
 - MVTec AD `metal_nut` 시험셋 50장(불량 14): 불량 13/14 검출, 오검출 0건 (임계값 0.678, 검증셋에서 선택). 시험셋이 작아 일반화 근거로 쓰기엔 부족.
-- 미구현: 불량 위치 박스 표시, 통계 화면, 재판정, 로그인·권한, 카메라 입력.
+- 미구현: 불량 위치 박스 표시, 재판정, 로그인·권한, 카메라 입력. (통계의 불량 유형은 검출 모델 전환 후 표시)
 - 데이터셋(MVTec AD)은 CC BY-NC-SA 4.0(비상업). 저장소에 이미지를 포함하지 않는다.

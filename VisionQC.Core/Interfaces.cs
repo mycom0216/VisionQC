@@ -30,4 +30,6 @@ public interface IResultRepository
     Task EndJobAsync(long jobId, JobStatus status, CancellationToken ct = default);
     Task SaveAsync(InspectionResult result, CancellationToken ct = default);
     Task<IReadOnlyList<InspectionResult>> QueryAsync(HistoryFilter filter, CancellationToken ct = default);
+    /// <summary>통계용 원본 행과 불량 유형별 건수(집계는 StatsCalculator가 한다).</summary>
+    Task<StatsData> QueryStatsAsync(StatsFilter filter, CancellationToken ct = default);
 }

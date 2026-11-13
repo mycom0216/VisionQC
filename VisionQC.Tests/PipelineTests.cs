@@ -62,6 +62,9 @@ internal sealed class MemoryRepo : IResultRepository
     }
     public Task<IReadOnlyList<InspectionResult>> QueryAsync(HistoryFilter f, CancellationToken ct = default)
         => Task.FromResult<IReadOnlyList<InspectionResult>>(Saved);
+    public Task<StatsData> QueryStatsAsync(StatsFilter f, CancellationToken ct = default)
+        => Task.FromResult(new StatsData(
+            Saved.Select(r => new StatRow(r.InspectedAtUtc, r.Verdict, r.ElapsedMs)).ToList(), Array.Empty<DefectCount>()));
 }
 
 internal sealed class SyncProgress<T> : IProgress<T>

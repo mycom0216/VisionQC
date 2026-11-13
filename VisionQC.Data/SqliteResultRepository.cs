@@ -179,4 +179,44 @@ public sealed class SqliteResultRepository : IResultRepository
         }
         return rows.Select(r => defects.TryGetValue(r.Id, out var d) ? r with { Defects = d } : r).ToList();
     }
+
+    public async Task<StatsData> QueryStatsAsync(StatsFilter f, CancellationToken ct = default)
+    {
+        await using var c = Open();
+
+        // 기간 조건은 두 쿼리에 같은 파라미터 이름으로 쓴다
+        var where = new List<string>();
+        void AddParams(SqliteCommand cmd)
+        {
+            if (f.FromUtc is { } from) cmd.Parameters.AddWithValue("$from", Iso(from));
+            if (f.ToUtc is { } to) cmd.Parameters.AddWithValue("$to", Iso(to));
+        }
+        if (f.FromUtc is not null) where.Add("r.inspected_at >= $from");
+        if (f.ToUtc is not null) where.Add("r.inspected_at <= $to");
+        var cond = where.Count > 0 ? " WHERE " + string.Join(" AND ", where) : "";
+
+        var rows = new List<StatRow>();
+        await using (var cmd = c.CreateCommand())
+        {
+            cmd.CommandText = "SELECT r.inspected_at, r.verdict, r.elapsed_ms FROM inspection_result r" + cond;
+            AddParams(cmd);
+            await using var rd = await cmd.ExecuteReaderAsync(ct).ConfigureAwait(false);
+            while (await rd.ReadAsync(ct).ConfigureAwait(false))
+                rows.Add(new StatRow(
+                    DateTime.Parse(rd.GetString(0), CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind),
+                    Enum.Parse<Verdict>(rd.GetString(1)), rd.GetInt32(2)));
+        }
+
+        var defects = new List<DefectCount>();
+        await using (var cmd = c.CreateCommand())
+        {
+            cmd.CommandText = "SELECT d.defect_type, COUNT(*) FROM defect d JOIN inspection_result r ON r.id = d.result_id"
+                + cond + " GROUP BY d.defect_type";
+            AddParams(cmd);
+            await using var rd = await cmd.ExecuteReaderAsync(ct).ConfigureAwait(false);
+            while (await rd.ReadAsync(ct).ConfigureAwait(false))
+                defects.Add(new DefectCount(rd.GetString(0), rd.GetInt32(1)));
+        }
+        return new StatsData(rows, defects);
+    }
 }

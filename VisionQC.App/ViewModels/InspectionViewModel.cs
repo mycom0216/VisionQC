@@ -39,8 +39,13 @@ public partial class InspectionViewModel : ObservableObject
 
     public ObservableCollection<InspectionResult> Recent { get; } = new();
 
-    public string YieldText => Total == 0 ? "-" : $"{(double)Ok / Total:P0}";
-    partial void OnTotalChanged(int value) => OnPropertyChanged(nameof(YieldText));
+    /// <summary>
+    /// 양품률 = OK/(OK+NG). 통계 화면과 같은 규칙(QualityMath).
+    /// 양품률에 쓰는 값(Ok, Ng)이 바뀔 때 알린다 — 예전에는 Total이 바뀔 때만 알려서 한 건씩 늦게 갱신되던 버그가 있었다.
+    /// </summary>
+    public string YieldText => QualityMath.YieldRate(Ok, Ng) is { } y ? y.ToString("P0") : "-";
+    partial void OnOkChanged(int value) => OnPropertyChanged(nameof(YieldText));
+    partial void OnNgChanged(int value) => OnPropertyChanged(nameof(YieldText));
 
     [RelayCommand]
     private void BrowseFolder()
