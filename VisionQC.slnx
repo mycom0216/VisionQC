@@ -1,0 +1,8 @@
+<Solution>
+  <Project Path="VisionQC.App/VisionQC.App.csproj" />
+  <Project Path="VisionQC.Core/VisionQC.Core.csproj" />
+  <Project Path="VisionQC.Data/VisionQC.Data.csproj" />
+  <Project Path="VisionQC.Imaging/VisionQC.Imaging.csproj" />
+  <Project Path="VisionQC.Inference/VisionQC.Inference.csproj" />
+  <Project Path="VisionQC.Tests/VisionQC.Tests.csproj" />
+</Solution>
