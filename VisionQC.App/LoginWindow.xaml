@@ -1,0 +1,27 @@
+<Window x:Class="VisionQC.App.LoginWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="VisionQC 로그인" Width="380" SizeToContent="Height" ResizeMode="NoResize"
+        WindowStartupLocation="CenterScreen" ShowInTaskbar="True">
+    <StackPanel Margin="22">
+        <TextBlock x:Name="Heading" FontSize="18" FontWeight="SemiBold" Text="로그인"/>
+        <TextBlock x:Name="SubHeading" Foreground="DimGray" TextWrapping="Wrap" Margin="0,4,0,14"/>
+
+        <TextBlock Text="아이디"/>
+        <TextBox x:Name="LoginIdBox" AutomationProperties.AutomationId="LoginId" Margin="0,2,0,8" MaxLength="32"/>
+        <TextBlock Text="비밀번호"/>
+        <PasswordBox x:Name="PasswordBox" AutomationProperties.AutomationId="LoginPassword" Margin="0,2,0,8" MaxLength="128"/>
+        <StackPanel x:Name="ConfirmPanel" Visibility="Collapsed">
+            <TextBlock Text="비밀번호 확인"/>
+            <PasswordBox x:Name="ConfirmBox" AutomationProperties.AutomationId="LoginConfirm" Margin="0,2,0,8" MaxLength="128"/>
+        </StackPanel>
+
+        <TextBlock x:Name="MessageText" Foreground="Crimson" TextWrapping="Wrap" MinHeight="18" Margin="0,2,0,8"
+                   AutomationProperties.AutomationId="LoginMessage"/>
+        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+            <Button x:Name="SubmitButton" Content="로그인" IsDefault="True" Padding="22,4" Margin="0,0,8,0" Click="Submit_Click"
+                    AutomationProperties.AutomationId="LoginButton"/>
+            <Button Content="종료" IsCancel="True" Padding="16,4"/>
+        </StackPanel>
+    </StackPanel>
+</Window>

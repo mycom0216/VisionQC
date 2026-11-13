@@ -32,10 +32,12 @@ public partial class ReviewViewModel : ObservableObject
 {
     private readonly IResultRepository _repo;
     private readonly ReviewService _service;
+    private readonly Session _session;
 
-    public ReviewViewModel(IResultRepository repo)
+    public ReviewViewModel(IResultRepository repo, Session session)
     {
         _repo = repo;
+        _session = session;
         _service = new ReviewService(repo);
     }
 
@@ -147,11 +149,15 @@ public partial class ReviewViewModel : ObservableObject
     private async Task CorrectAsync(Verdict corrected)
     {
         if (Selected is not { } row) return;
+        if (!_session.Can(Permission.ReviewResults)) { Message = "정정 권한이 없습니다(엔지니어 이상)."; return; }
         try
         {
-            await _service.CorrectAsync(row.Id, corrected, Note, Environment.UserName);
+            var note = Note;
+            await _service.CorrectAsync(row.Id, corrected, note, _session.User.LoginId);   // 정정자 = 로그인한 계정
+            var audited = await _session.AuditAsync(AuditActions.ReviewCorrect,
+                $"{row.FileName}: {row.Item.Result.Verdict}→{corrected}" + (string.IsNullOrWhiteSpace(note) ? "" : $" ({note.Trim()})"));
             await ReloadAsync(row.Id);
-            Message = $"{row.FileName}: {corrected}(으)로 정정했습니다.";
+            Message = $"{row.FileName}: {corrected}(으)로 정정했습니다." + (audited ? "" : " (※ 감사 로그 기록 실패)");
         }
         catch (Exception ex) { Message = $"정정 실패: {ex.Message}"; }
     }

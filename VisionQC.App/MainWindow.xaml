@@ -2,7 +2,15 @@
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="VisionQC - AI 외관검사" Width="1100" Height="720" MinWidth="900" MinHeight="600">
-    <TabControl x:Name="Tabs" SelectionChanged="Tabs_SelectionChanged">
+    <Grid>
+    <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
+    <DockPanel Margin="12,6,12,2" LastChildFill="False">
+        <TextBlock x:Name="UserLabel" DockPanel.Dock="Left" VerticalAlignment="Center" FontWeight="SemiBold"
+                   AutomationProperties.AutomationId="UserLabel"/>
+        <Button Content="로그아웃" DockPanel.Dock="Right" Padding="12,2" Click="Logout_Click" AutomationProperties.AutomationId="LogoutButton"/>
+        <Button Content="비밀번호 변경" DockPanel.Dock="Right" Padding="12,2" Margin="0,0,8,0" Click="ChangePassword_Click"/>
+    </DockPanel>
+    <TabControl Grid.Row="1" x:Name="Tabs" SelectionChanged="Tabs_SelectionChanged">
 
         <TabItem Header="검사" x:Name="InspectionTab">
             <Grid Margin="12">
@@ -22,16 +30,11 @@
                     <TextBox Grid.Column="1" Text="{Binding FolderPath, UpdateSourceTrigger=PropertyChanged}" Margin="0,0,6,6"/>
                     <Button Grid.Column="2" Content="찾아보기" Command="{Binding BrowseFolderCommand}" Padding="10,2" Margin="0,0,0,6"/>
 
-                    <TextBlock Grid.Row="1" Text="모델(.onnx)" VerticalAlignment="Center" Margin="0,0,8,6"/>
-                    <TextBox Grid.Row="1" Grid.Column="1" Text="{Binding ModelPath, UpdateSourceTrigger=PropertyChanged}" Margin="0,0,6,6"/>
-                    <Button Grid.Row="1" Grid.Column="2" Content="찾아보기" Command="{Binding BrowseModelCommand}" Padding="10,2" Margin="0,0,0,6"/>
+                    <TextBlock Grid.Row="1" Grid.ColumnSpan="3" Text="{Binding SettingsSummary}" Foreground="DimGray"
+                               Margin="0,0,0,6" TextWrapping="Wrap" AutomationProperties.AutomationId="SettingsSummary"/>
 
                     <StackPanel Grid.Row="2" Grid.ColumnSpan="3" Orientation="Horizontal">
-                        <TextBlock Text="임계값" VerticalAlignment="Center" Margin="0,0,8,0"/>
-                        <Slider Width="200" Minimum="0" Maximum="1" TickFrequency="0.05" IsSnapToTickEnabled="True"
-                                Value="{Binding Threshold}" IsEnabled="{Binding IsRunning, Converter={StaticResource InvertBool}}"/>
-                        <TextBlock Text="{Binding Threshold, StringFormat=F2}" Width="40" Margin="8,0,24,0" VerticalAlignment="Center"/>
-                        <Button Content="▶ 시작" Command="{Binding StartCommand}" Padding="16,4" Margin="0,0,8,0"/>
+                        <Button Content="▶ 시작" Command="{Binding StartCommand}" Padding="16,4" Margin="0,0,8,0" AutomationProperties.AutomationId="StartButton"/>
                         <Button Content="■ 중지" Command="{Binding StopCommand}" Padding="16,4"/>
                     </StackPanel>
                 </Grid>
@@ -249,5 +252,97 @@
                 </StackPanel>
             </Grid>
         </TabItem>
+        <TabItem Header="설정" x:Name="SettingsTab">
+            <ScrollViewer VerticalScrollBarVisibility="Auto">
+            <StackPanel Margin="16" MaxWidth="760" HorizontalAlignment="Left">
+                <TextBlock Text="검사 설정 (엔지니어 이상 변경 가능)" FontSize="16" FontWeight="SemiBold" Margin="0,0,0,10"/>
+
+                <TextBlock Text="모델(.onnx)"/>
+                <DockPanel Margin="0,2,0,10">
+                    <Button DockPanel.Dock="Right" Content="찾아보기" Command="{Binding BrowseModelCommand}" Padding="10,2" Margin="6,0,0,0"/>
+                    <TextBox Text="{Binding ModelPath, UpdateSourceTrigger=PropertyChanged}" AutomationProperties.AutomationId="SettingsModelPath"/>
+                </DockPanel>
+
+                <TextBlock Text="임계값 (불량 점수 ≥ 임계값이면 NG)"/>
+                <StackPanel Orientation="Horizontal" Margin="0,2,0,10">
+                    <Slider Width="300" Minimum="0" Maximum="1" Value="{Binding Threshold}" VerticalAlignment="Center"/>
+                    <TextBox Text="{Binding ThresholdText, UpdateSourceTrigger=LostFocus}" Width="70" Margin="10,0,0,0"
+                             AutomationProperties.AutomationId="SettingsThreshold"/>
+                </StackPanel>
+
+                <CheckBox Content="관심 영역(ROI) 사용 — 학습 때와 같은 영역으로 학습한 모델이어야 함" IsChecked="{Binding UseRoi}"
+                          AutomationProperties.AutomationId="SettingsUseRoi" Margin="0,4,0,4"/>
+                <Grid IsEnabled="{Binding UseRoi}" Margin="16,0,0,10">
+                    <Grid.ColumnDefinitions><ColumnDefinition Width="90"/><ColumnDefinition Width="300"/><ColumnDefinition Width="50"/></Grid.ColumnDefinitions>
+                    <Grid.RowDefinitions><RowDefinition/><RowDefinition/><RowDefinition/><RowDefinition/></Grid.RowDefinitions>
+                    <TextBlock Text="왼쪽 X (%)"/><Slider Grid.Column="1" Minimum="0" Maximum="95" TickFrequency="1" IsSnapToTickEnabled="True" Value="{Binding RoiX}"/><TextBlock Grid.Column="2" Text="{Binding RoiX}" Margin="8,0,0,0"/>
+                    <TextBlock Grid.Row="1" Text="위쪽 Y (%)"/><Slider Grid.Row="1" Grid.Column="1" Minimum="0" Maximum="95" TickFrequency="1" IsSnapToTickEnabled="True" Value="{Binding RoiY}"/><TextBlock Grid.Row="1" Grid.Column="2" Text="{Binding RoiY}" Margin="8,0,0,0"/>
+                    <TextBlock Grid.Row="2" Text="폭 W (%)"/><Slider Grid.Row="2" Grid.Column="1" Minimum="5" Maximum="100" TickFrequency="1" IsSnapToTickEnabled="True" Value="{Binding RoiW}"/><TextBlock Grid.Row="2" Grid.Column="2" Text="{Binding RoiW}" Margin="8,0,0,0"/>
+                    <TextBlock Grid.Row="3" Text="높이 H (%)"/><Slider Grid.Row="3" Grid.Column="1" Minimum="5" Maximum="100" TickFrequency="1" IsSnapToTickEnabled="True" Value="{Binding RoiH}"/><TextBlock Grid.Row="3" Grid.Column="2" Text="{Binding RoiH}" Margin="8,0,0,0"/>
+                </Grid>
+
+                <StackPanel Orientation="Horizontal">
+                    <Button Content="저장" Command="{Binding SaveCommand}" Padding="22,4" Margin="0,0,8,0" AutomationProperties.AutomationId="SettingsSave"/>
+                    <Button Content="되돌리기" Command="{Binding RevertCommand}" Padding="16,4"/>
+                </StackPanel>
+                <TextBlock Text="{Binding Message}" Margin="0,8,0,0" TextWrapping="Wrap" AutomationProperties.AutomationId="SettingsMessage"/>
+                <TextBlock Text="{Binding FileInfo}" Margin="0,10,0,0" Foreground="DimGray" TextWrapping="Wrap"/>
+            </StackPanel>
+            </ScrollViewer>
+        </TabItem>
+
+        <TabItem Header="관리" x:Name="AdminTab">
+            <Grid Margin="12">
+                <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
+
+                <TextBlock Text="사용자" FontWeight="SemiBold" Margin="0,0,0,4"/>
+                <Grid Grid.Row="1">
+                    <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="360"/></Grid.ColumnDefinitions>
+                    <DataGrid ItemsSource="{Binding Users}" SelectedItem="{Binding SelectedUser}" AutoGenerateColumns="False" IsReadOnly="True"
+                              SelectionMode="Single" HeadersVisibility="Column" AutomationProperties.AutomationId="UserGrid">
+                        <DataGrid.Columns>
+                            <DataGridTextColumn Header="아이디" Binding="{Binding LoginId}" Width="*"/>
+                            <DataGridTextColumn Header="역할" Binding="{Binding RoleText}" Width="90"/>
+                            <DataGridTextColumn Header="상태" Binding="{Binding StateText}" Width="70"/>
+                            <DataGridTextColumn Header="생성" Binding="{Binding CreatedText}" Width="110"/>
+                        </DataGrid.Columns>
+                    </DataGrid>
+                    <StackPanel Grid.Column="1" Margin="12,0,0,0">
+                        <TextBlock Text="새 사용자" Foreground="DimGray"/>
+                        <TextBox x:Name="NewLoginId" AutomationProperties.AutomationId="NewLoginId" Margin="0,2,0,4"/>
+                        <PasswordBox x:Name="NewPassword" AutomationProperties.AutomationId="NewPassword" Margin="0,0,0,4"/>
+                        <StackPanel Orientation="Horizontal">
+                            <ComboBox x:Name="NewRole" Width="110" SelectedIndex="0" AutomationProperties.AutomationId="NewRole">
+                                <ComboBoxItem Content="Operator"/><ComboBoxItem Content="Engineer"/><ComboBoxItem Content="Admin"/>
+                            </ComboBox>
+                            <Button Content="만들기" Padding="14,2" Margin="8,0,0,0" Click="CreateUser_Click" AutomationProperties.AutomationId="CreateUserButton"/>
+                        </StackPanel>
+                        <Separator Margin="0,10"/>
+                        <TextBlock Text="선택한 사용자" Foreground="DimGray"/>
+                        <Button Content="활성/비활성 전환" Padding="10,2" Margin="0,4,0,6" HorizontalAlignment="Left" Click="ToggleActive_Click"/>
+                        <PasswordBox x:Name="ResetPassword" Margin="0,0,0,4"/>
+                        <Button Content="비밀번호 재설정(잠금 해제 포함)" Padding="10,2" HorizontalAlignment="Left" Click="ResetPassword_Click"/>
+                        <TextBlock Text="{Binding UserMessage}" TextWrapping="Wrap" Margin="0,8,0,0" AutomationProperties.AutomationId="UserMessage"/>
+                    </StackPanel>
+                </Grid>
+
+                <StackPanel Grid.Row="2" Orientation="Horizontal" Margin="0,10,0,4">
+                    <TextBlock Text="감사 로그" FontWeight="SemiBold" VerticalAlignment="Center" Margin="0,0,16,0"/>
+                    <ComboBox ItemsSource="{Binding ActionOptions}" SelectedItem="{Binding SelectedAction}" Width="150"/>
+                    <Button Content="조회" Command="{Binding RefreshAuditCommand}" Padding="16,2" Margin="8,0,12,0"/>
+                    <TextBlock Text="{Binding AuditMessage}" VerticalAlignment="Center" Foreground="DimGray"/>
+                </StackPanel>
+                <DataGrid Grid.Row="3" ItemsSource="{Binding Audit}" AutoGenerateColumns="False" IsReadOnly="True" HeadersVisibility="Column"
+                          AutomationProperties.AutomationId="AuditGrid">
+                    <DataGrid.Columns>
+                        <DataGridTextColumn Header="시각" Binding="{Binding TimeText}" Width="140"/>
+                        <DataGridTextColumn Header="사용자" Binding="{Binding LoginId}" Width="110"/>
+                        <DataGridTextColumn Header="동작" Binding="{Binding Action}" Width="130"/>
+                        <DataGridTextColumn Header="상세" Binding="{Binding Detail}" Width="*"/>
+                    </DataGrid.Columns>
+                </DataGrid>
+            </Grid>
+        </TabItem>
     </TabControl>
+    </Grid>
 </Window>

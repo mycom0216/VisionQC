@@ -30,6 +30,8 @@ public sealed record InspectionSettings
     /// <summary>읽기 큐 용량. 가득 차면 읽는 쪽이 기다린다(메모리 폭주 방지).</summary>
     public int QueueCapacity { get; init; } = 8;
     public int Workers { get; init; } = 1;
+    /// <summary>관심 영역(비율). null이면 이미지 전체. 학습 때와 같은 영역이어야 한다.</summary>
+    public Roi? Roi { get; init; }
 }
 
 public sealed record InspectionResult

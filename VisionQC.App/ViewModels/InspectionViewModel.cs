@@ -13,14 +13,32 @@ namespace VisionQC.App.ViewModels;
 
 public partial class InspectionViewModel : ObservableObject
 {
-    private readonly IResultRepository _repo;
+    private readonly AppServices _svc;
+    private readonly Session _session;
     private CancellationTokenSource? _cts;
 
-    public InspectionViewModel(IResultRepository repo) => _repo = repo;
+    public InspectionViewModel(AppServices svc, Session session)
+    {
+        _svc = svc;
+        _session = session;
+        _folderPath = svc.Effective.FolderPath;
+        svc.SettingsChanged += () => OnPropertyChanged(nameof(SettingsSummary));
+        if (svc.SettingsWarning is { } w) _statusMessage = $"설정 알림: {w}";
+    }
 
-    [ObservableProperty] private string _folderPath = "";
-    [ObservableProperty] private string _modelPath = "";
-    [ObservableProperty] private double _threshold = 0.5;
+    [ObservableProperty] private string _folderPath;
+
+    /// <summary>모델·임계값·ROI는 설정 탭(엔지니어 이상)에서 바꾼다. 여기서는 지금 값을 보여 주기만 한다.</summary>
+    public string SettingsSummary
+    {
+        get
+        {
+            var s = _svc.Effective;
+            var model = string.IsNullOrWhiteSpace(s.ModelPath) ? "(모델 미설정 — 설정 탭에서 지정)" : Path.GetFileName(s.ModelPath);
+            var roi = s.Roi is { } r ? $"ROI {r.X:P0},{r.Y:P0} {r.W:P0}×{r.H:P0}" : "ROI 전체";
+            return $"모델 {model} · 임계값 {s.Threshold:F3} · {roi}   (변경: 설정 탭, 엔지니어 이상)";
+        }
+    }
 
     [NotifyCanExecuteChangedFor(nameof(StartCommand))]
     [NotifyCanExecuteChangedFor(nameof(StopCommand))]
@@ -30,7 +48,7 @@ public partial class InspectionViewModel : ObservableObject
     [ObservableProperty] private int _ok;
     [ObservableProperty] private int _ng;
     [ObservableProperty] private int _error;
-    [ObservableProperty] private string _statusMessage = "폴더와 모델(.onnx)을 선택한 뒤 시작하세요.";
+    [ObservableProperty] private string _statusMessage = "폴더를 선택한 뒤 시작하세요.";
 
     [ObservableProperty] private ImageSource? _currentImage;
     [ObservableProperty] private string _verdictText = "-";
@@ -54,22 +72,19 @@ public partial class InspectionViewModel : ObservableObject
         if (dlg.ShowDialog() == true) FolderPath = dlg.FolderName;
     }
 
-    [RelayCommand]
-    private void BrowseModel()
-    {
-        var dlg = new OpenFileDialog { Title = "ONNX 모델 선택", Filter = "ONNX 모델 (*.onnx)|*.onnx" };
-        if (dlg.ShowDialog() == true) ModelPath = dlg.FileName;
-    }
-
     [RelayCommand(CanExecute = nameof(CanStart))]
     private async Task StartAsync()
     {
+        if (!_session.Can(Permission.RunInspection)) { StatusMessage = "검사 권한이 없습니다."; return; }
         if (!Directory.Exists(FolderPath)) { StatusMessage = "이미지 폴더를 찾을 수 없습니다."; return; }
+        var cfg = _svc.Effective;
+        if (string.IsNullOrWhiteSpace(cfg.ModelPath)) { StatusMessage = "모델이 설정되어 있지 않습니다. 엔지니어에게 설정을 요청하세요."; return; }
 
         OnnxClassifier engine;
-        try { engine = new OnnxClassifier(ModelPath); }
+        try { engine = new OnnxClassifier(cfg.ModelPath); }
         catch (Exception ex) { StatusMessage = $"모델을 열 수 없습니다: {ex.Message}"; return; }
 
+        _svc.RememberFolder(FolderPath);
         Total = Ok = Ng = Error = 0;
         Recent.Clear();
         VerdictText = "-"; VerdictBrush = Brushes.Gray; DetailText = ""; CurrentImage = null;
@@ -77,8 +92,11 @@ public partial class InspectionViewModel : ObservableObject
         StatusMessage = $"검사 중… (모델 {engine.Model.Name} / {engine.Model.Version})";
         _cts = new CancellationTokenSource();
 
-        var settings = new InspectionSettings { Threshold = (float)Threshold };
-        var pipeline = new InspectionPipeline(new OpenCvPreprocessor(), engine, new ThresholdJudge(), _repo);
+        var settings = cfg.ToInspectionSettings();
+        await _session.AuditAsync(AuditActions.InspectionStart,
+            $"{FolderPath} · 모델 {engine.Model.Version} · 임계값 {cfg.Threshold:F3}" + (cfg.Roi is null ? "" : " · ROI 사용"));
+
+        var pipeline = new InspectionPipeline(new OpenCvPreprocessor(), engine, new ThresholdJudge(), _svc.Results);
         var progress = new Progress<InspectionResult>(OnResult);   // UI 스레드에서 만들었으므로 콜백도 UI 스레드
 
         try
@@ -91,6 +109,8 @@ public partial class InspectionViewModel : ObservableObject
                 _ => $"실패: {sum.FatalError}"
             };
             if (sum.SaveFailures > 0) StatusMessage += $"  ※ 이력 저장 실패 {sum.SaveFailures}건";
+            await _session.AuditAsync(AuditActions.InspectionEnd,
+                $"{sum.Status} · 총 {sum.Total} (OK {sum.Ok} / NG {sum.Ng} / ERROR {sum.Error}) · 회차 {sum.JobId}");
         }
         catch (Exception ex) { StatusMessage = $"오류: {ex.Message}"; }
         finally

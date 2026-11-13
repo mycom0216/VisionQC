@@ -26,9 +26,21 @@ public sealed class OpenCvPreprocessor : IPreprocessor
         if (src.Empty())
             throw new InvalidDataException($"이미지를 읽을 수 없음: {Path.GetFileName(frame.Path)}");
 
+        // ROI가 있으면 그 영역만 잘라서 리사이즈한다(비율 → 픽셀, 항상 이미지 안쪽·최소 1px)
+        Mat? crop = null;
+        Mat source = src;
+        if (settings.Roi is { } roi)
+        {
+            if (roi.Validate() is { } problem) throw new InvalidOperationException($"ROI 설정 오류: {problem}");
+            var (rx, ry, rw, rh) = roi.ToPixels(src.Width, src.Height);
+            crop = new Mat(src, new Rect(rx, ry, rw, rh));
+            source = crop;
+        }
+
         int size = settings.InputSize;
         using var resized = new Mat();
-        Cv2.Resize(src, resized, new Size(size, size), 0, 0, InterpolationFlags.Area);
+        try { Cv2.Resize(source, resized, new Size(size, size), 0, 0, InterpolationFlags.Area); }
+        finally { crop?.Dispose(); }
 
         resized.GetArray(out Vec3b[] pixels);
         int plane = size * size;
