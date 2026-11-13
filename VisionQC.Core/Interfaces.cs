@@ -32,4 +32,10 @@ public interface IResultRepository
     Task<IReadOnlyList<InspectionResult>> QueryAsync(HistoryFilter filter, CancellationToken ct = default);
     /// <summary>통계용 원본 행과 불량 유형별 건수(집계는 StatsCalculator가 한다).</summary>
     Task<StatsData> QueryStatsAsync(StatsFilter filter, CancellationToken ct = default);
+    /// <summary>정정 1건 추가. 존재하지 않는 결과 ID면 예외. 원 판정은 바꾸지 않는다.</summary>
+    Task AddReviewAsync(Review review, CancellationToken ct = default);
+    /// <summary>이력 조회 + 결과마다 가장 나중 정정과 정정 횟수.</summary>
+    Task<IReadOnlyList<ReviewedResult>> QueryReviewedAsync(HistoryFilter filter, CancellationToken ct = default);
+    /// <summary>한 결과의 정정 이력(오래된 순).</summary>
+    Task<IReadOnlyList<Review>> GetReviewsAsync(long resultId, CancellationToken ct = default);
 }

@@ -55,6 +55,14 @@ public sealed class SqliteResultRepository : IResultRepository
             CREATE INDEX IF NOT EXISTS ix_result_verdict ON inspection_result(verdict);
             CREATE INDEX IF NOT EXISTS ix_result_job ON inspection_result(job_id);
             CREATE INDEX IF NOT EXISTS ix_defect_result ON defect(result_id);
+            CREATE TABLE IF NOT EXISTS result_review (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                result_id INTEGER NOT NULL REFERENCES inspection_result(id) ON DELETE CASCADE,
+                reviewer TEXT NOT NULL,
+                corrected_verdict TEXT NOT NULL CHECK (corrected_verdict IN ('OK','NG')),
+                note TEXT NULL,
+                reviewed_at TEXT NOT NULL);
+            CREATE INDEX IF NOT EXISTS ix_review_result ON result_review(result_id);
             """;
         cmd.ExecuteNonQuery();
     }
@@ -178,6 +186,62 @@ public sealed class SqliteResultRepository : IResultRepository
             }
         }
         return rows.Select(r => defects.TryGetValue(r.Id, out var d) ? r with { Defects = d } : r).ToList();
+    }
+
+    public async Task AddReviewAsync(Review r, CancellationToken ct = default)
+    {
+        if (r.Corrected == Verdict.ERROR)
+            throw new ArgumentException("정정은 OK 또는 NG만 가능합니다.", nameof(r));
+        await using var c = Open();
+        await using var cmd = c.CreateCommand();
+        cmd.CommandText = "INSERT INTO result_review(result_id,reviewer,corrected_verdict,note,reviewed_at) VALUES($r,$w,$v,$n,$at)";
+        cmd.Parameters.AddWithValue("$r", r.ResultId);
+        cmd.Parameters.AddWithValue("$w", r.Reviewer);
+        cmd.Parameters.AddWithValue("$v", r.Corrected.ToString());
+        cmd.Parameters.AddWithValue("$n", (object?)r.Note ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("$at", Iso(r.ReviewedAtUtc));
+        await cmd.ExecuteNonQueryAsync(ct).ConfigureAwait(false);   // 없는 result_id면 FK 위반으로 SqliteException
+    }
+
+    private static Review ReadReview(SqliteDataReader rd) => new(
+        rd.GetInt64(0), rd.GetInt64(1), rd.GetString(2), Enum.Parse<Verdict>(rd.GetString(3)),
+        rd.IsDBNull(4) ? null : rd.GetString(4),
+        DateTime.Parse(rd.GetString(5), CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind));
+
+    public async Task<IReadOnlyList<Review>> GetReviewsAsync(long resultId, CancellationToken ct = default)
+    {
+        await using var c = Open();
+        await using var cmd = c.CreateCommand();
+        cmd.CommandText = "SELECT id,result_id,reviewer,corrected_verdict,note,reviewed_at FROM result_review WHERE result_id=$r ORDER BY id";
+        cmd.Parameters.AddWithValue("$r", resultId);
+        var list = new List<Review>();
+        await using var rd = await cmd.ExecuteReaderAsync(ct).ConfigureAwait(false);
+        while (await rd.ReadAsync(ct).ConfigureAwait(false)) list.Add(ReadReview(rd));
+        return list;
+    }
+
+    public async Task<IReadOnlyList<ReviewedResult>> QueryReviewedAsync(HistoryFilter f, CancellationToken ct = default)
+    {
+        var results = await QueryAsync(f, ct).ConfigureAwait(false);
+        if (results.Count == 0) return Array.Empty<ReviewedResult>();
+
+        // 정정은 한 번에 조회(N+1 방지). id 순으로 읽어 마지막이 가장 나중 정정.
+        var latest = new Dictionary<long, Review>();
+        var count = new Dictionary<long, int>();
+        await using var c = Open();
+        await using var cmd = c.CreateCommand();
+        var names = new List<string>();
+        for (int i = 0; i < results.Count; i++) { names.Add($"$i{i}"); cmd.Parameters.AddWithValue($"$i{i}", results[i].Id); }
+        cmd.CommandText = "SELECT id,result_id,reviewer,corrected_verdict,note,reviewed_at FROM result_review "
+            + $"WHERE result_id IN ({string.Join(",", names)}) ORDER BY id";
+        await using (var rd = await cmd.ExecuteReaderAsync(ct).ConfigureAwait(false))
+            while (await rd.ReadAsync(ct).ConfigureAwait(false))
+            {
+                var rev = ReadReview(rd);
+                latest[rev.ResultId] = rev;
+                count[rev.ResultId] = count.GetValueOrDefault(rev.ResultId) + 1;
+            }
+        return results.Select(r => new ReviewedResult(r, latest.GetValueOrDefault(r.Id), count.GetValueOrDefault(r.Id))).ToList();
     }
 
     public async Task<StatsData> QueryStatsAsync(StatsFilter f, CancellationToken ct = default)

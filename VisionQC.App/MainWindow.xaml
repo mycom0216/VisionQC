@@ -110,6 +110,77 @@
             </Grid>
         </TabItem>
 
+        <TabItem Header="재판정" x:Name="ReviewTab">
+            <Grid Margin="12">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/>
+                </Grid.RowDefinitions>
+
+                <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
+                    <TextBlock Text="기간" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                    <DatePicker SelectedDate="{Binding FromDate}" Width="120"/>
+                    <TextBlock Text=" ~ " VerticalAlignment="Center"/>
+                    <DatePicker SelectedDate="{Binding ToDate}" Width="120"/>
+                    <TextBlock Text="판정" VerticalAlignment="Center" Margin="16,0,6,0"/>
+                    <ComboBox ItemsSource="{Binding VerdictOptions}" SelectedItem="{Binding SelectedVerdict}" Width="80"/>
+                    <TextBlock Text="정정" VerticalAlignment="Center" Margin="16,0,6,0"/>
+                    <ComboBox ItemsSource="{Binding ReviewOptions}" SelectedItem="{Binding SelectedReviewFilter}" Width="90"/>
+                    <Button Content="조회" Command="{Binding RefreshCommand}" Padding="16,2" Margin="16,0,12,0"/>
+                    <TextBlock Text="{Binding Message}" VerticalAlignment="Center" Foreground="DimGray"/>
+                </StackPanel>
+
+                <Border Grid.Row="1" Background="#FFF4F6FA" BorderBrush="LightGray" BorderThickness="1" Padding="10,6" Margin="0,0,0,8">
+                    <StackPanel>
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="재판정 임계값 (미리보기)" VerticalAlignment="Center" FontWeight="SemiBold" Margin="0,0,10,0"/>
+                            <Slider Width="260" Minimum="0" Maximum="1" TickFrequency="0.01" IsSnapToTickEnabled="True"
+                                    Value="{Binding Threshold}" AutomationProperties.AutomationId="ReviewThreshold"/>
+                            <TextBlock Text="{Binding Threshold, StringFormat=F2}" Width="40" Margin="8,0,0,0" VerticalAlignment="Center"/>
+                        </StackPanel>
+                        <TextBlock Text="{Binding PreviewSummary}" Margin="0,4,0,0" TextWrapping="Wrap"/>
+                        <TextBlock Text="{Binding TruthSummary}" Margin="0,2,0,0" TextWrapping="Wrap" Foreground="#FF305496"/>
+                    </StackPanel>
+                </Border>
+
+                <Grid Grid.Row="2">
+                    <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="400"/></Grid.ColumnDefinitions>
+                    <DataGrid ItemsSource="{Binding Items}" SelectedItem="{Binding Selected}" AutoGenerateColumns="False"
+                              IsReadOnly="True" SelectionMode="Single" HeadersVisibility="Column" AutomationProperties.AutomationId="ReviewGrid">
+                        <DataGrid.Columns>
+                            <DataGridTextColumn Header="시각" Binding="{Binding TimeText}" Width="100"/>
+                            <DataGridTextColumn Header="원 판정" Binding="{Binding OriginalText}" Width="62"/>
+                            <DataGridTextColumn Header="점수" Binding="{Binding ScoreText}" Width="58"/>
+                            <DataGridTextColumn Header="재판정" Binding="{Binding PreviewText}" Width="80"/>
+                            <DataGridTextColumn Header="정정" Binding="{Binding CorrectedText}" Width="80"/>
+                            <DataGridTextColumn Header="파일" Binding="{Binding FileName}" Width="*"/>
+                        </DataGrid.Columns>
+                    </DataGrid>
+                    <DockPanel Grid.Column="1" Margin="12,0,0,0">
+                        <StackPanel DockPanel.Dock="Bottom" Margin="0,8,0,0">
+                            <TextBlock Text="메모(선택, 500자)" Foreground="DimGray"/>
+                            <TextBox Text="{Binding Note, UpdateSourceTrigger=PropertyChanged}" MaxLength="500" Height="46" TextWrapping="Wrap"
+                                     AcceptsReturn="False" AutomationProperties.AutomationId="ReviewNote"/>
+                            <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
+                                <Button Content="정상(OK)으로 정정" Command="{Binding CorrectToOkCommand}" Padding="12,4" Margin="0,0,8,0"
+                                        AutomationProperties.AutomationId="CorrectOkButton"/>
+                                <Button Content="불량(NG)으로 정정" Command="{Binding CorrectToNgCommand}" Padding="12,4"
+                                        AutomationProperties.AutomationId="CorrectNgButton"/>
+                            </StackPanel>
+                            <TextBlock Text="정정 이력(오래된 순, 가장 나중 정정이 유효)" Foreground="DimGray" Margin="0,8,0,0"/>
+                            <TextBlock Text="{Binding HistoryText}" TextWrapping="Wrap" MaxHeight="70"/>
+                        </StackPanel>
+                        <TextBlock DockPanel.Dock="Bottom" Text="{Binding SelectedDetail}" TextWrapping="Wrap" Margin="0,6,0,0"/>
+                        <Border BorderBrush="LightGray" BorderThickness="1" Background="#FF1E1E1E">
+                            <Image Source="{Binding SelectedImage}" Stretch="Uniform"/>
+                        </Border>
+                    </DockPanel>
+                </Grid>
+
+                <TextBlock Grid.Row="3" Margin="0,6,0,0" Foreground="DimGray" TextWrapping="Wrap"
+                           Text="정정은 원 판정을 덮어쓰지 않고 기록으로 쌓입니다. 현재는 로그인이 없어 Windows 사용자 이름이 정정자로 기록되며 권한 구분은 없습니다."/>
+            </Grid>
+        </TabItem>
+
         <TabItem Header="통계" x:Name="StatsTab">
             <TabItem.Resources>
                 <DataTemplate x:Key="BarRow">

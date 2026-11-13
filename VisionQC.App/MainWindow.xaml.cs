@@ -10,13 +10,14 @@ public partial class MainWindow : Window
 {
     private readonly HistoryViewModel? _history;
     private readonly StatsViewModel? _stats;
+    private readonly ReviewViewModel? _review;
     private bool _autoRunDone;
 
     public MainWindow()
     {
         InitializeComponent();
 
-        // 선택적 실행 인자(시연·자동화용): --folder <경로> --model <onnx> --threshold <0~1> --db <파일> --autorun --tab history|stats
+        // 선택적 실행 인자(시연·자동화용): --folder <경로> --model <onnx> --threshold <0~1> --db <파일> --autorun --tab history|review|stats
         var args = ParseArgs(Environment.GetCommandLineArgs().Skip(1).ToArray());
 
         var dbPath = args.GetValueOrDefault("db") ?? Path.Combine(
@@ -42,6 +43,8 @@ public partial class MainWindow : Window
         HistoryTab.DataContext = _history;
         _stats = new StatsViewModel(repo);
         StatsTab.DataContext = _stats;
+        _review = new ReviewViewModel(repo);
+        ReviewTab.DataContext = _review;
 
         var startTab = args.GetValueOrDefault("tab");
         var autorun = args.ContainsKey("autorun");
@@ -54,6 +57,7 @@ public partial class MainWindow : Window
                 if (autorun) await inspection.StartCommand.ExecuteAsync(null);
                 if (startTab == "history") Tabs.SelectedItem = HistoryTab;
                 else if (startTab == "stats") Tabs.SelectedItem = StatsTab;
+                else if (startTab == "review") Tabs.SelectedItem = ReviewTab;
             };
     }
 
@@ -72,8 +76,9 @@ public partial class MainWindow : Window
     private async void Tabs_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
         // TabControl 안의 ComboBox 등에서 올라온 SelectionChanged는 무시
-        if (e.OriginalSource != Tabs || _history is null || _stats is null) return;
+        if (e.OriginalSource != Tabs || _history is null || _stats is null || _review is null) return;
         if (Tabs.SelectedItem == HistoryTab) await _history.RefreshAsync();
         else if (Tabs.SelectedItem == StatsTab) await _stats.RefreshAsync();
+        else if (Tabs.SelectedItem == ReviewTab) await _review.RefreshAsync();
     }
 }
