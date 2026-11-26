@@ -1,3 +1,4 @@
+// AssemblyInfo.cs — WPF 프로젝트 템플릿이 만드는 어셈블리 특성 파일. 아래 ThemeInfo는 테마별 리소스 딕셔너리의 위치를 WPF에 알려 준다(기본값 그대로).
 using System.Windows;
 
 [assembly:ThemeInfo(

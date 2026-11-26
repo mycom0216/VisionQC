@@ -9,3 +9,7 @@ TestResults/
 
 # 배포 산출물
 publish/
+
+# 로컬 시연 모델·MVTec 데이터·분리된 시연 계정 (배포/커밋 금지)
+demo-assets/
+demo-runtime/

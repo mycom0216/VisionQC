@@ -1,3 +1,13 @@
+// ============================================================================================
+// SettingsViewModel.cs — "설정" 탭(SettingsTab)의 ViewModel (FR-11, 엔지니어 이상 변경 가능).
+//
+// 하는 일: 모델 파일(.onnx), 임계값(threshold), ROI, 자동 로그아웃 시간, 자동 백업 주기를 편집하고 저장한다.
+//   노출하는 명령: BrowseModelCommand(모델 파일 선택), SaveCommand(검증 후 저장), RevertCommand(되돌리기).
+//   저장 규칙: 값 검증 → 변경 내용 없으면 중단 → 설정 파일에 저장(AppServices.ApplySettings) → 변경 내용을 감사 로그에 기록(FR-12).
+//
+// 용어: 임계값 = 불량 점수가 이 값 이상이면 NG로 판정하는 기준(0~1). 낮추면 불량을 더 잘 잡지만 오검출이 늘어난다.
+//       ROI(관심 영역) = 이미지 전체 대신 검사할 사각형(X, Y, 폭 W, 높이 H). 여기서는 0~100% 슬라이더이고 저장은 0~1 비율이다.
+// ============================================================================================
 using System.Globalization;
 using System.IO;
 using CommunityToolkit.Mvvm.ComponentModel;
@@ -12,6 +22,7 @@ public partial class SettingsViewModel : ObservableObject
 {
     private readonly AppServices _svc;
     private readonly Session _session;
+    // 슬라이더(Threshold)와 텍스트 상자(ThresholdText)가 서로를 갱신할 때 무한 반복되지 않게 하는 재진입 방지 플래그.
     private bool _syncing;
 
     public SettingsViewModel(AppServices svc, Session session)
@@ -24,6 +35,7 @@ public partial class SettingsViewModel : ObservableObject
                         ? "\n※ 실행 인자(--model/--threshold)로 시작해 화면 값이 저장된 값과 다를 수 있습니다. 저장하면 이 값이 파일에 기록됩니다." : "");
     }
 
+    // 화면 입력값들. 텍스트로 받는 항목(...Text)은 저장할 때 숫자로 검사해 잘못된 입력을 막는다.
     [ObservableProperty] private string _modelPath = "";
     [ObservableProperty] private double _threshold = 0.5;
     [ObservableProperty] private string _thresholdText = "0.500";
@@ -37,6 +49,7 @@ public partial class SettingsViewModel : ObservableObject
     [ObservableProperty] private string _message = "";
     [ObservableProperty] private string _fileInfo = "";
 
+    // 슬라이더 → 텍스트 상자: 소수 3자리 글자로 맞춘다. _syncing으로 반대 방향 갱신이 되돌아오는 것을 막는다.
     partial void OnThresholdChanged(double value)
     {
         if (_syncing) return;
@@ -45,6 +58,7 @@ public partial class SettingsViewModel : ObservableObject
         _syncing = false;
     }
 
+    // 텍스트 상자 → 슬라이더: 0~1 숫자일 때만 반영하고, 아니면 입력 오류 메시지를 보인다(저장 단계에서 다시 검사).
     partial void OnThresholdTextChanged(string value)
     {
         if (_syncing) return;
@@ -58,6 +72,7 @@ public partial class SettingsViewModel : ObservableObject
         else Message = "임계값은 0~1 사이의 숫자여야 합니다.";
     }
 
+    /// <summary>현재 "지금 쓰는 설정"(Effective)을 화면 입력값으로 불러온다. ROI는 저장 단위(0~1)를 슬라이더 단위(%)로 바꾼다. "되돌리기"도 이것을 쓴다.</summary>
     private void LoadFromEffective()
     {
         var s = _svc.Effective;
@@ -73,6 +88,7 @@ public partial class SettingsViewModel : ObservableObject
         Message = "";
     }
 
+    /// <summary>"찾아보기" 버튼 — ONNX 모델 파일을 고른다.</summary>
     [RelayCommand]
     private void BrowseModel()
     {
@@ -80,9 +96,14 @@ public partial class SettingsViewModel : ObservableObject
         if (dlg.ShowDialog() == true) ModelPath = dlg.FileName;
     }
 
+    /// <summary>"되돌리기" 버튼 — 저장하지 않은 편집을 버리고 현재 설정으로 되돌린다.</summary>
     [RelayCommand]
     private void Revert() => LoadFromEffective();
 
+    /// <summary>
+    /// "저장" 버튼. 권한 확인 → 임계값·ROI·자동 로그아웃·자동 백업 값 검증 → 모델 파일 존재 확인 → 변경 내용 요약 → 저장 → 감사 로그 기록.
+    /// 검증 실패는 예외 대신 Message에 사유를 보이고 저장하지 않는다.
+    /// </summary>
     [RelayCommand]
     private async Task SaveAsync()
     {
@@ -93,6 +114,7 @@ public partial class SettingsViewModel : ObservableObject
         Roi? roi = null;
         if (UseRoi)
         {
+            // 화면의 %(0~100)를 저장 단위 비율(0~1)로 바꾼다. Validate()는 영역이 이미지를 벗어나거나 너무 작은 경우의 사유를 돌려준다.
             roi = new Roi(RoiX / 100, RoiY / 100, RoiW / 100, RoiH / 100);
             if (roi.Validate() is { } problem) { Message = problem; return; }
         }
@@ -105,9 +127,11 @@ public partial class SettingsViewModel : ObservableObject
 
         var cur = _svc.Effective;
         var model = ModelPath.Trim();
+        // 모델은 "경로가 바뀌었을 때만" 파일 존재를 검사한다(이미 지정돼 있던 경로는 그대로 두고 다른 항목만 고칠 수 있도록).
         if (model.Length > 0 && model != cur.ModelPath && !File.Exists(model))
         { Message = "모델 파일을 찾을 수 없습니다."; return; }
 
+        // record의 with 식: 현재 설정을 복사해 바뀐 항목만 갈아 끼운 새 설정을 만든다(원본은 그대로).
         var next = cur with { ModelPath = model, Threshold = thr, Roi = roi, IdleTimeoutMinutes = idle, AutoBackupHours = autoBackup };
         var changes = Describe(cur, next);
         if (changes.Count == 0) { Message = "변경된 내용이 없습니다."; return; }
@@ -116,10 +140,12 @@ public partial class SettingsViewModel : ObservableObject
         catch (Exception ex) when (ex is ArgumentException or IOException or UnauthorizedAccessException)
         { Message = $"저장 실패: {ex.Message}"; return; }
 
+        // 누가 무엇을 바꿨는지(예: 임계값 0.500→0.600) 감사 로그에 남긴다. 기록 실패는 메시지에 경고로만 덧붙인다.
         var audited = await _session.AuditAsync(AuditActions.SettingsChange, string.Join(" · ", changes));
         Message = "저장했습니다: " + string.Join(", ", changes) + (audited ? "" : "  (※ 감사 로그 기록 실패)");
     }
 
+    /// <summary>이전·이후 설정을 비교해 바뀐 항목만 "모델 a→b", "임계값 0.500→0.600" 같은 문장 목록으로 만든다(저장 메시지·감사 로그용).</summary>
     internal static List<string> Describe(AppSettings a, AppSettings b)
     {
         var list = new List<string>();

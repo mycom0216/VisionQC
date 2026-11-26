@@ -1,0 +1,6 @@
+erDiagram
+ inspection_job ||--o{ inspection_result : contains
+ inspection_result ||--o{ defect : has
+ inspection_result ||--o{ result_review : reviewed
+ %% audit_log.user_id and result_review.reviewer are NOT foreign keys.
+ %% defect has no rows from the classification model.
